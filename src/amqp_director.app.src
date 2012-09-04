@@ -1,0 +1,13 @@
+{application, amqp_director,
+ [
+  {description, ""},
+  {vsn, "0.0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  amqp_client
+                 ]},
+  {mod, { amqp_director_app, []}},
+  {env, []}
+ ]}.
