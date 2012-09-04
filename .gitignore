@@ -1,4 +1,8 @@
-scrap
-deps
+.eunit
 ebin
+deps
+priv
+scrap
+*.o
 *.beam
+*.plt
