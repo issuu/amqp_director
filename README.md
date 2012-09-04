@@ -83,7 +83,7 @@ multiple connections.
 ## I was joking, here is a complete code example:
 
 An `example_start` module could look like:
--behaviour (amqp_director_character).
+
     -module(example_start).
     -compile(export_all).
     -include_lib("amqp_client/include/amqp_client.hrl").
