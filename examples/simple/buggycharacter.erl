@@ -1,11 +1,11 @@
--module (mylistener).
+-module (buggycharacter).
 -behaviour (amqp_director_character).
 
 -compile(export_all).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
-queue() -> <<"fz_test_simple">>.
+queue() -> <<"fz_test_buggy">>.
 
 publish( Payload ) ->
     Basic = #'basic.publish'{ routing_key = queue() },
@@ -30,12 +30,19 @@ init( Chan ) ->
     {ok, Tag}. 
 
 handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan ) ->
-    io:format("Received: ~p~n", [binary_to_term(Payload)]),
-    amqp_channel:cast(Chan, #'basic.ack'{delivery_tag = DTag}),
-    ok.
+    case random:uniform() of
+        X when X < 0.4 ->
+            io:format("Let it crash! (~p)~n", [binary_to_term(Payload)]),
+            throw( random_crash );
+        _ ->
+            io:format("Received: ~p~n", [binary_to_term(Payload)]),
+            amqp_channel:cast(Chan, #'basic.ack'{delivery_tag = DTag}),
+            ok
+    end.
 
-handle_failure( _Msg, _State, _Chan) ->
-    io:format("Uops, someting went wrong!~n", []),
+handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel ) ->
+    io:format("Uops, someting went wrong! Let's nack the message~n", []),
+    amqp_channel:cast(Channel, #'basic.nack'{delivery_tag = DeliverTag}),
     ok.
 
 terminate(Reason, State) ->

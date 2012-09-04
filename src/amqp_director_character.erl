@@ -12,7 +12,7 @@
          terminate/2, code_change/3]).
 
 -record (state, {module, channel, mod_state, pending = gb_trees:empty()}).
--record (connecting_state, {module, conn_name}).
+-record (connecting_state, {register = true, module, conn_name}).
 
 %%%
 %%% API
@@ -67,7 +67,8 @@ publish( ModName, AmqpPublishMessage ) ->
 %%% Callbacks
 %%%
 init( {Mod, ConnName} ) ->
-    {ok, #connecting_state{ module = Mod, conn_name = ConnName }}.
+    {ok, #connecting_state{ module = Mod, conn_name = ConnName }, 0}.
+    % {ok, {register_connection, Mod,ConnName}, 0}.
 
 handle_call( {init_amqp, Channel}, _From, #connecting_state{ module = Mod } ) ->
     erlang:monitor(process, Channel),
@@ -76,8 +77,21 @@ handle_call( {init_amqp, Channel}, _From, #connecting_state{ module = Mod } ) ->
 
 % The client is responsible for retries, therefore if we are not yet connected,
 % return {error, connecting}
-handle_call( {publish, _Msg}, _From, #connecting_state{} = State ) ->
+% handle_call( {publish, _Msg}, _From, {register_connection, Mod, ConnName} ) ->
+%     amqp_director_connection_sup:register_character(ConnName, self()),
+%     {reply, {error, connecting}, #connecting_state{ module = Mod, conn_name = ConnName }};
+handle_call( _Msg, _From, #connecting_state{ register = true } = State ) ->
+    {reply, {error, connecting}, State, 0};
+handle_call( _Msg, _From, #connecting_state{} = State) ->
     {reply, {error, connecting}, State};
+% handle_call( {publish, _Msg}, _From, #connecting_state{ register = R, conn_name = ConnName } = State ) ->
+%     S0 = case R of
+%         true ->
+%             amqp_director_connection_sup:register_character(ConnName, self()),
+%             State#connecting_state{ register = false };
+%         false -> State
+%     end,
+%     {reply, {error, connecting}, S0};
 handle_call( {publish, AmqpPublishMessage}, _From, #state{ module = Mod, channel = Channel } = State ) ->
     {AmqpBasic, AmqpMessage} = Mod:publish_hook( pre, AmqpPublishMessage ),
     amqp_channel:cast(Channel, AmqpBasic, AmqpMessage),
@@ -90,6 +104,19 @@ handle_cast( {remove_pending, Pid}, State ) ->
     {noreply, remove_pending_discard(State, Pid)};
 handle_cast( _Request, State ) ->
     {noreply, State}.
+
+handle_info( timeout, #connecting_state{ register = false } = State) ->
+    {noreply, State};
+handle_info( timeout, #connecting_state{ register = true, conn_name = ConnName } = State ) ->
+    Res = self(),
+    spawn(fun() ->
+        % We need to call this function *outside* the gen_server,
+        % because this calls init_amqp, which calls the gen_server,
+        % which of course causes a deadlock.
+        % Other possible fix? perhaps make amqp_init a cast.
+        amqp_director_connection_sup:register_character(ConnName, Res)
+    end),
+    {noreply, State#connecting_state{ register = false }};
 
 handle_info({do_terminate, Reason, State}, _) ->
     {stop, Reason, State};
@@ -141,7 +168,10 @@ handle_info({#'basic.deliver'{}, _Contents} = AmqpMessage, #state{ module = Mod,
     State0 = add_pending(State, Pid, {AmqpMessage, Monitor}),
     { noreply, State0 }.
 
-terminate( Reason, {Mod, _Chan, State} ) ->
+terminate( Reason, #state{ module = Mod } = State ) ->
+    Mod:terminate( Reason, State ),
+    ok;
+terminate( Reason, #connecting_state{ module = Mod } = State ) ->
     Mod:terminate( Reason, State ),
     ok.
 

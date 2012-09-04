@@ -56,6 +56,10 @@ handle_info( timeout, #connecting_state{ attempts = Attempts, conn_info = ConnIn
             {noreply, flush_queue(S0, Q)}
     end;
 
+% A monitored process terminated normally
+handle_info( {'DOWN', _, process, _Pid, normal}, State ) ->
+    {noreply, State};
+
 % Connection process died, we die too
 handle_info( {'DOWN', _, process, Conn, _}, #state{ connection = Conn } = State ) ->
     {stop, amqp_connection_down, State};
@@ -65,8 +69,10 @@ handle_info( {'DOWN', _, process, Char, _}, #state{} = State) ->
     State0 = do_unregister(State, Char),
     {noreply, State0}.
 
-terminate( Reason, {Mod, _Chan, State} ) ->
-    Mod:terminate( Reason, State ),
+terminate( _Reson, #connecting_state{} ) ->
+    ok;
+terminate( _Reason, #state{ connection = Conn } ) ->
+    amqp_connection:close(Conn),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

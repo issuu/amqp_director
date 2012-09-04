@@ -10,18 +10,38 @@ start() ->
     ok = application:start( amqp_client ),
     ok = application:start( amqp_director ),
     ?log("started!",[]),
-    amqp_director:add_connection( local_conn, #amqp_params_network{}),
-    ?log("connection added",[]),
-    amqp_director:add_character( mylistener, local_conn ),
-    ?log("character added, now sleep...",[]),
+    Conn = amqp_director:add_connection( local_conn, #amqp_params_network{}),
+    ?log("connection added (~p)",[Conn]),
+    Char = amqp_director:add_character( mylistener, local_conn ),
+    ?log("character added (~p), now sleep...",[Char]),
+
+    BuggyChar = amqp_director:add_character(buggycharacter, local_conn),
+    ?log("character added (~p), now sleep...",[BuggyChar]),
 
     timer:sleep(1000),
     ?log("and now try to send a message",[]),
     Res = mylistener:publish("foobar"),
-    ?log("pusblished? ~p", [Res]),
+    ?log("published? ~p", [Res]),
+    Pid = spawn(fun() -> publish_loop(0) end),
+    put(pub_proc, Pid), 
+    ok.
 
-    timer:sleep(5000),
+publish_loop(N) ->
+    receive
+        exit -> ok
+    after
+        500 ->
+            Res0 = mylistener:publish( "foobar" ++ integer_to_list(N) ),
+            ?log("res0>>~p", [Res0]),
+            Res1 = buggycharacter:publish( "bugme" ++ integer_to_list(N) ),
+            ?log("res1>>~p", [Res1]),
+            publish_loop( N+1 )
+    end.
+
+stop() ->
     ?log("close app", []),
+    Pid = get(pub_proc),
+    Pid ! exit,
     application:stop( amqp_director ).
 
 amqp_params() ->

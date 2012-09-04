@@ -15,19 +15,22 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 register_character( CharacterMod, ConnName ) ->
-    io:format("Registering character: ~p (~p)~n", [CharacterMod, CharacterMod:name()]),
-    Res = supervisor:start_child(?MODULE, {
+    % io:format("Registering character: ~p (~p)~n", [CharacterMod, CharacterMod:name()]),
+    % Res = 
+    supervisor:start_child(?MODULE, {
         CharacterMod:name(),
         {amqp_director_character, start_link, [CharacterMod, ConnName]},
         permanent,
         5000,
         worker,
-        [amqp_director_character]}),
-    CharacterPid = case Res of
-        {ok, Child} -> Child;
-        {ok, Child, _Info} -> Child
-    end,
-    amqp_director_connection_sup:register_character(ConnName, CharacterPid).
+        [amqp_director_character]}).
+    % ,
+    % CharacterPid = case Res of
+    %     {ok, Child} -> Child;
+    %     {ok, Child, _Info} -> Child
+    % end. %,
+    % amqp_director_connection_sup:register_character(ConnName, CharacterPid),
+    % Res.
 
 %% ===================================================================
 %% Supervisor callbacks
