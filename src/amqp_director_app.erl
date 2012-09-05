@@ -26,9 +26,15 @@ setup_connections( {ok, ConnectionDefs} ) ->
 setup_connections( _ ) -> ok.
 
 setup_characters( {ok, CharacterDefs} ) ->
-    [ amqp_director:add_character( Mod, ConnName ) || {Mod, ConnName} <- CharacterDefs ],
+    [ amqp_director:add_character( make_character_module(ModCtor), ConnName ) || {ModCtor, ConnName} <- CharacterDefs ],
     ok;
 setup_characters( _ ) -> ok.
+
+make_character_module( Mod ) when is_atom( Mod ) -> {Mod, undefined};
+% make_character_module( {abstract, Mod, Args} )
+%     when is_atom(Mod) ->
+%     {Mod:new(Args), undefined};
+make_character_module( {Mod, Args} ) -> {Mod, Args}.
 
 parse_connection( ParamsNetwork ) ->
     #amqp_params_network{

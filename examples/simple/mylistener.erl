@@ -1,7 +1,9 @@
 -module (mylistener).
 -behaviour (amqp_director_character).
 
--compile(export_all).
+% -compile(export_all).
+-export ([publish/1]).
+-export ([name/0, init/2, handle/3, handle_failure/3, terminate/2, publish_hook/2, deliver_hook/3]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -14,7 +16,7 @@ publish( Payload ) ->
     amqp_director_character:publish(?MODULE, {Basic, Message}).
 
 name() -> ?MODULE.
-init( Chan ) ->
+init( Chan, _Args ) ->
     io:format("initializing module~n", []),
     BindKey = queue(),
 

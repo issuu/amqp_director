@@ -1,7 +1,9 @@
 -module (buggycharacter).
 -behaviour (amqp_director_character).
 
--compile(export_all).
+% -compile(export_all).
+-export ([publish/1]).
+-export ([name/0, init/2, handle/3, handle_failure/3, terminate/2, publish_hook/2, deliver_hook/3]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -14,7 +16,7 @@ publish( Payload ) ->
     amqp_director_character:publish(?MODULE, {Basic, Message}).
 
 name() -> ?MODULE.
-init( Chan ) ->
+init( Chan, _Args ) ->
     io:format("initializing module~n", []),
     BindKey = queue(),
 
@@ -27,15 +29,20 @@ init( Chan ) ->
 
     BasicConsume = #'basic.consume'{ queue = BindKey },
     #'basic.consume_ok'{ consumer_tag = Tag } = amqp_channel:subscribe(Chan, BasicConsume, self()),
-    {ok, Tag}. 
+    Pid = spawn( fun() -> random_loop() end ),
+    {ok, {Tag, Pid}}. 
 
-handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan ) ->
-    case random:uniform() of
+handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, {Tag, RPid}, Chan ) ->
+    RPid ! {req, self()},
+    Random = receive
+        {random, R} -> R
+    end,
+    case Random of
         X when X < 0.4 ->
             io:format("Let it crash! (~p)~n", [binary_to_term(Payload)]),
             throw( random_crash );
-        _ ->
-            io:format("Received: ~p~n", [binary_to_term(Payload)]),
+        Y ->
+            io:format("Received (with probability of handle: ~p): ~p~n", [Y,binary_to_term(Payload)]),
             amqp_channel:cast(Chan, #'basic.ack'{delivery_tag = DTag}),
             ok
     end.
@@ -52,3 +59,8 @@ publish_hook( _Signal, Msg ) ->
     Msg.
 deliver_hook( _Signal, Msg, _Channel ) ->
     Msg.
+
+random_loop() ->
+    receive
+        {req, From} -> From ! {random,random:uniform()}, random_loop()
+    end.

@@ -29,9 +29,9 @@ ensure_started(App) ->
 add_connection( Name, #amqp_params_network{} = AmqpConnInfo ) ->
     amqp_director_connection_sup:register_connection(Name, AmqpConnInfo).
 
--spec add_character( module(), atom() ) ->  {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
-add_character( CharacterMod, ConnName ) ->
-    amqp_director_character_sup:register_character(CharacterMod, ConnName).
+-spec add_character( {module(), term()}, atom() ) ->  {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
+add_character( CharacterModAndArgs, ConnName ) ->
+    amqp_director_character_sup:register_character(CharacterModAndArgs, ConnName).
 
 % Sample configuration:
 % {connections, [ {conn_1, [{host,"localhost"}]}, {conn_2, [{username, "myuser"}, {host, "amqp.issuu.com"}]} ]}

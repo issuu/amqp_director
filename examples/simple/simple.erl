@@ -12,10 +12,10 @@ start() ->
     ?log("started!",[]),
     Conn = amqp_director:add_connection( local_conn, #amqp_params_network{}),
     ?log("connection added (~p)",[Conn]),
-    Char = amqp_director:add_character( mylistener, local_conn ),
+    Char = amqp_director:add_character( {mylistener, undefined}, local_conn ),
     ?log("character added (~p), now sleep...",[Char]),
 
-    BuggyChar = amqp_director:add_character(buggycharacter, local_conn),
+    BuggyChar = amqp_director:add_character({buggycharacter, undefined}, local_conn),
     ?log("character added (~p), now sleep...",[BuggyChar]),
 
     timer:sleep(1000),

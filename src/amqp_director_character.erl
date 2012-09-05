@@ -11,8 +11,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record (state, {module, channel, mod_state, pending = gb_trees:empty()}).
--record (connecting_state, {register = true, module, conn_name}).
+-record (state, {module, channel, mod_state = undefined, pending = gb_trees:empty()}).
+-record (connecting_state, {register = true, module, mod_args = undefined, conn_name}).
 
 %%%
 %%% API
@@ -23,8 +23,11 @@ behaviour_info(callbacks) ->
     % Used for amqp_director_character:publish/2
     % It's always good to have an indirection layer.
     {name,0},
-    % init( AmqpChannel ) -> {ok, State}
-    {init,1},
+    % init( term(), AmqpChannel ) -> {ok, State}
+    % the first argument is the optional parameter passed to the character
+    % calling e.g. amqp_director:add_character( {init_args, mymodule, [0,1]} , my_connection),
+    % the callback will be called with mymodule:init( AmqpChannel, [0,1] )
+    {init,2},
     % terminate( Reason, State ) -> Ignored
     {terminate,2},
     % handle( Message, State, Channel ) -> {ok, NewState} | ok
@@ -53,8 +56,10 @@ behaviour_info(callbacks) ->
 behaviour_info(_Other) ->
     undefined.
 
-start_link( CharacterModule, ConnectionName ) ->
-    gen_server:start_link({local, CharacterModule:name()}, ?MODULE, {CharacterModule, ConnectionName}, []).
+start_link( {CharacterModule, ModuleArgs}, ConnectionName ) ->
+    gen_server:start_link({local, CharacterModule:name()}, ?MODULE, {{CharacterModule, ModuleArgs}, ConnectionName}, []).
+% start_link( CharacterModule, ConnectionName ) ->
+%     gen_server:start_link({local, CharacterModule:name()}, ?MODULE, {{CharacterModule, undefined}, ConnectionName}, []).
 
 init_amqp( Ref, AmqpChannel ) ->
     gen_server:call(Ref, {init_amqp, AmqpChannel}).
@@ -66,13 +71,13 @@ publish( ModName, AmqpPublishMessage ) ->
 %%%
 %%% Callbacks
 %%%
-init( {Mod, ConnName} ) ->
-    {ok, #connecting_state{ module = Mod, conn_name = ConnName }, 0}.
+init( {{Mod, Args}, ConnName} ) ->
+    {ok, #connecting_state{ module = Mod, mod_args = Args, conn_name = ConnName }, 0}.
     % {ok, {register_connection, Mod,ConnName}, 0}.
 
-handle_call( {init_amqp, Channel}, _From, #connecting_state{ module = Mod } ) ->
+handle_call( {init_amqp, Channel}, _From, #connecting_state{ module = Mod, mod_args = Args } ) ->
     erlang:monitor(process, Channel),
-    {ok, ModState} = Mod:init(Channel),
+    {ok, ModState} = Mod:init(Channel, Args),
     {reply, ok, #state{ module = Mod, channel = Channel, mod_state = ModState }};
 
 % The client is responsible for retries, therefore if we are not yet connected,
