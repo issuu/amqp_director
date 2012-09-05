@@ -3,7 +3,7 @@
 
 % -compile(export_all).
 -export ([publish/1]).
--export ([init/2, handle/4, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
+-export ([init/2, handle/4, handle_publish/3, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -30,6 +30,8 @@ init( Chan, _Args ) ->
     #'basic.consume_ok'{ consumer_tag = Tag } = amqp_channel:subscribe(Chan, BasicConsume, self()),
     Pid = spawn( fun() -> random_loop() end ),
     {ok, {Tag, Pid}}. 
+
+handle_publish( _Msg, _From, _State ) -> ok.
 
 handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, {Tag, RPid}, Chan, _Ref ) ->
     RPid ! {req, self()},

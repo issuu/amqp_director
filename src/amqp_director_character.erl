@@ -4,7 +4,7 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 -export ([start_link/2]).
--export ([name/1, init_amqp/2, publish/2]).
+-export ([name/1, init_amqp/2, publish/3, publish/2]).
 -export ([behaviour_info/1]).
 
 %% gen_server callbacks
@@ -30,6 +30,8 @@ behaviour_info(callbacks) ->
     {init,2},
     % terminate( Reason, State ) -> Ignored
     {terminate,2},
+    % handle_publish( {{ #'basic.publish'{}, #amqp_msg{} }, term()}, From, State ) -> {ok, NewState} | ok
+    {handle_publish,3},
     % handle( Message, State, Channel, CharacterRef ) -> {ok, NewState} | ok
     % Keep in mind that handle/3 is called in a worker process,
     % and the state is updated asynchronously
@@ -40,7 +42,7 @@ behaviour_info(callbacks) ->
     % provides a way to nack a message
     {handle_failure,4},
     % handle a message before it is published
-    % publish_hook( pre, { #'basic.publish'{}, term() } ) -> { #'basic.publish'{}, binary() }
+    % publish_hook( pre, { #'basic.publish'{}, #amqp_msg{} } ) -> { #'basic.publish'{}, #amqp_msg{} }
     % Use cases:
     % - message marshalling
     % - message validation
@@ -67,16 +69,19 @@ init_amqp( Ref, AmqpChannel ) ->
 name( Ref ) ->
     gen_server:call(Ref, name).
 
+-spec publish( term(), {#'basic.publish'{}, #amqp_msg{}}, term() ) -> ok | {error, connecting}.
+publish( Server, AmqpPublishMessage, Args ) ->
+    gen_server:call(Server, {publish, AmqpPublishMessage, Args}).
+
 -spec publish( term(), {#'basic.publish'{}, #amqp_msg{}} ) -> ok | {error, connecting}.
-publish( ModName, AmqpPublishMessage ) ->
-    gen_server:call(ModName, {publish, AmqpPublishMessage}). %Mod:publish_hook(pre, AmqpPublishMessage)}).
+publish( Server, AmqpPublishMessage ) ->
+    publish(Server,AmqpPublishMessage,undefined).
 
 %%%
 %%% Callbacks
 %%%
 init( {{Name, Mod, Args}, ConnName} ) ->
     {ok, #connecting_state{ name = Name, module = Mod, mod_args = Args, conn_name = ConnName }, 0}.
-    % {ok, {register_connection, Mod,ConnName}, 0}.
 
 handle_call( {init_amqp, Channel}, _From, #connecting_state{ name = Name, module = Mod, mod_args = Args } ) ->
     erlang:monitor(process, Channel),
@@ -88,25 +93,19 @@ handle_call( name, _From, #state{ name = Name } = State ) ->
 
 % The client is responsible for retries, therefore if we are not yet connected,
 % return {error, connecting}
-% handle_call( {publish, _Msg}, _From, {register_connection, Mod, ConnName} ) ->
-%     amqp_director_connection_sup:register_character(ConnName, self()),
-%     {reply, {error, connecting}, #connecting_state{ module = Mod, conn_name = ConnName }};
 handle_call( _Msg, _From, #connecting_state{ register = true } = State ) ->
     {reply, {error, connecting}, State, 0};
 handle_call( _Msg, _From, #connecting_state{} = State) ->
     {reply, {error, connecting}, State};
-% handle_call( {publish, _Msg}, _From, #connecting_state{ register = R, conn_name = ConnName } = State ) ->
-%     S0 = case R of
-%         true ->
-%             amqp_director_connection_sup:register_character(ConnName, self()),
-%             State#connecting_state{ register = false };
-%         false -> State
-%     end,
-%     {reply, {error, connecting}, S0};
-handle_call( {publish, AmqpPublishMessage}, _From, #state{ module = Mod, channel = Channel } = State ) ->
+
+handle_call( {publish, AmqpPublishMessage, Args}, From, #state{ module = Mod, channel = Channel, mod_state = InnerState } = State ) ->
     {AmqpBasic, AmqpMessage} = Mod:publish_hook( pre, AmqpPublishMessage ),
-    amqp_channel:cast(Channel, AmqpBasic, AmqpMessage),
-    {reply, ok, State}.
+    ok = amqp_channel:cast(Channel, AmqpBasic, AmqpMessage),
+    InnerState0 = case Mod:handle_publish( { AmqpPublishMessage,Args }, From, InnerState ) of
+        {ok, NewInner} -> NewInner;
+        ok -> InnerState
+    end,
+    {reply, ok, State#state{ mod_state = InnerState0 }}.
 
 handle_cast( {new_inner_state, NewInner, Pid}, State ) ->
     State0 = remove_pending_discard(State, Pid),

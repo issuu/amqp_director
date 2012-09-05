@@ -48,6 +48,9 @@ It is responsibility of the caller to react accordingly.
  - `handle( { #'basic.deliver'{}, #amqp_msg{} }, State, Amqp_channel, CharPid ) -> {ok, NewState} | ok`: handle the
    reception of a message. Can optionally return a new character state. WARNING: the state will be asynchronously
    updated, as the `handle` callback is called in a separate process.
+ - `handle_publish( {{ #'basic.deliver'{}, #amqp_msg{} }, Args}, From, State ) -> {ok, term()} | ok`: when
+    publishing, the character state can be updated. `Args` are the optional arguments passed to
+    `amqp_director_character:publish` function.
  - `handle_failure( { #'basic.deliver'{}, #amqp_msg{} }, State, Channel, CharPid ) -> Ignored`:
    should the handling of a message fail, this callback will be called. Useful for, e.g., `nack` Amqp or
    stats collection.
@@ -121,7 +124,7 @@ And the `mycharacter` module:
 
     -include_lib("amqp_client/include/amqp_client.hrl").
 
-    -export ([init/2, handle/4, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
+    -export ([init/2, handle/4, handle_publish/3, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
 
     queue() -> <<"my_bautiful_queue">>.
 
@@ -148,6 +151,8 @@ And the `mycharacter` module:
         %
         ok.
     
+    handle_publish( _Msg, _From, _State ) ->
+        ok.
     handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel, CharRef ) ->
         io:format("Uops, someting went wrong! Let's nack the message~n", []),
         amqp_channel:cast(Channel, #'basic.nack'{delivery_tag = DeliverTag}),
