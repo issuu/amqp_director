@@ -61,15 +61,16 @@ It is responsibility of the caller to react accordingly.
 ### Adding connections and characters, the code way
 
 Use
+
    amqp_director:add_connection( connection_name(), #amqp_params_network{} )
 
 to register a connection (where `connection_name() :: atom()`).
 Once at least a connection has been registered, it is possible to register characters using
 the function 
 
-    amqp_director:add_character( {atom(), module(), term()}, connection_name() )
+    amqp_director:add_character( {character_name(), module(), term()}, connection_name() )
 
-where the first parameter is a tuple with a character name, module and module parameters (the latter will be passed to the `init` callback).
+where the first parameter is a tuple with a character name (where `character_name() :: atom()`), module and module parameters (the latter will be passed to the `init` callback).
 
 ### Adding connections and characters, the configuration way
 
@@ -77,7 +78,10 @@ Set the environment variables `connections` and `characters` of the `amqp_direct
 Both are list, here is an example:
 
     {connections, [ {conn_1, [{host,"localhost"}]}, {conn_2, [{username, "myuser"}, {host, "amqp.issuu.com"}]} ]}
-    {characters, [ {my_module_1, conn_1}, { {my_module_2, ["some",params]}, conn_1}, { {another_2, my_module_2, ["other", params]}, conn_2} ]}
+    {characters, [
+        {my_module_1, conn_1}, //character_name == module name, character args = undefined
+        { {my_module_2, ["some",params]}, conn_1},
+        { {another_2, my_module_2, ["other", params]}, conn_2} ]}
 
 Each connection tuple has the connection name and a `proplist` that (as of ver.0.0.1) can specify the `host`, `port`,
 `username` and `password` fields.
@@ -102,8 +106,8 @@ An `example_start` module could look like:
         ok = application:start( amqp_director ),
 
         amqp_director:add_connection( myconn, #amqp_params_network{} ),
-        amqp_director:add_character( {mychar1, mycharacter, [my beautiful, 5]}, myconn ),
-        amqp_director:add_character( {mychar2, mycharacter, [my beautiful, 2]}, myconn ),
+        amqp_director:add_character( {mychar1, mycharacter, [my, beautiful, 5]}, myconn ),
+        amqp_director:add_character( {mychar2, mycharacter, [my, beautiful, 2]}, myconn ),
 
         %here you can send messages and bla bla
         amqp_director_character:publish( mychar1, { #'basic.publish'{ routing_key = "somekey" }, #amqp_msg{ payload = <<"foo">> } } ),
