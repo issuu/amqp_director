@@ -62,7 +62,7 @@ It is responsibility of the caller to react accordingly.
 
 Use
 
-   amqp_director:add_connection( connection_name(), #amqp_params_network{} )
+    amqp_director:add_connection( connection_name(), #amqp_params_network{} )
 
 to register a connection (where `connection_name() :: atom()`).
 Once at least a connection has been registered, it is possible to register characters using
