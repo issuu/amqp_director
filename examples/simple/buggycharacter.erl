@@ -3,7 +3,7 @@
 
 % -compile(export_all).
 -export ([publish/1]).
--export ([init/2, handle/4, handle_publish/3, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
+-export ([init/2, handle/4, handle_publish/3, handle_failure/4, terminate/2, publish_hook/3, deliver_hook/3]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -56,7 +56,7 @@ handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channe
 terminate(Reason, State) ->
     io:format("Quitting because of: ~p~nWhen in state:~p~n", [Reason,State]).
 
-publish_hook( _Signal, Msg ) ->
+publish_hook( _Signal, Msg, _State ) ->
     Msg.
 deliver_hook( _Signal, Msg, _Channel ) ->
     Msg.

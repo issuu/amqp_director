@@ -42,11 +42,11 @@ behaviour_info(callbacks) ->
     % provides a way to nack a message
     {handle_failure,4},
     % handle a message before it is published
-    % publish_hook( pre, { #'basic.publish'{}, #amqp_msg{} } ) -> { #'basic.publish'{}, #amqp_msg{} }
+    % publish_hook( pre, { #'basic.publish'{}, #amqp_msg{} }, State ) -> { #'basic.publish'{}, #amqp_msg{} }
     % Use cases:
     % - message marshalling
     % - message validation
-    {publish_hook,2},
+    {publish_hook,3},
     % handle a message before/after it is delivered
     % deliver_hook( pre, { #'basic.deliver'{}, term() }, term(), pid() ) -> { #'basic.deliver'{}, binary() }
     % deliver_hook( post, { #'basic.deliver'{}, term() }, term(), pid() ) -> Ignored
@@ -99,7 +99,7 @@ handle_call( _Msg, _From, #connecting_state{} = State) ->
     {reply, {error, connecting}, State};
 
 handle_call( {publish, AmqpPublishMessage, Args}, From, #state{ module = Mod, channel = Channel, mod_state = InnerState } = State ) ->
-    {AmqpBasic, AmqpMessage} = Mod:publish_hook( pre, AmqpPublishMessage ),
+    {AmqpBasic, AmqpMessage} = Mod:publish_hook( pre, AmqpPublishMessage, InnerState ),
     ok = amqp_channel:cast(Channel, AmqpBasic, AmqpMessage),
     InnerState0 = case Mod:handle_publish( { AmqpPublishMessage,Args }, From, InnerState ) of
         {ok, NewInner} -> NewInner;
