@@ -14,12 +14,12 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-register_character( {CharacterMod, _Args} = ModAndArgs, ConnName ) ->
+register_character( {CharacterName, _CharacterMod, _Args} = NameAndModAndArgs, ConnName ) ->
     % io:format("Registering character: ~p (~p)~n", [CharacterMod, CharacterMod:name()]),
     % Res = 
     supervisor:start_child(?MODULE, {
-        CharacterMod:name(),
-        {amqp_director_character, start_link, [ModAndArgs, ConnName]},
+        CharacterName,
+        {amqp_director_character, start_link, [NameAndModAndArgs, ConnName]},
         permanent,
         5000,
         worker,

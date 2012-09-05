@@ -4,15 +4,15 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 -export ([start_link/2]).
--export ([init_amqp/2, publish/2]).
+-export ([name/1, init_amqp/2, publish/2]).
 -export ([behaviour_info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record (state, {module, channel, mod_state = undefined, pending = gb_trees:empty()}).
--record (connecting_state, {register = true, module, mod_args = undefined, conn_name}).
+-record (state, {name, module, channel, mod_state = undefined, pending = gb_trees:empty()}).
+-record (connecting_state, {register = true, name, module, mod_args = undefined, conn_name}).
 
 %%%
 %%% API
@@ -22,7 +22,7 @@ behaviour_info(callbacks) ->
     % name() -> atom() -- returns the name of the character.
     % Used for amqp_director_character:publish/2
     % It's always good to have an indirection layer.
-    {name,0},
+    % {name,0},
     % init( term(), AmqpChannel ) -> {ok, State}
     % the first argument is the optional parameter passed to the character
     % calling e.g. amqp_director:add_character( {init_args, mymodule, [0,1]} , my_connection),
@@ -30,15 +30,15 @@ behaviour_info(callbacks) ->
     {init,2},
     % terminate( Reason, State ) -> Ignored
     {terminate,2},
-    % handle( Message, State, Channel ) -> {ok, NewState} | ok
+    % handle( Message, State, Channel, CharacterRef ) -> {ok, NewState} | ok
     % Keep in mind that handle/3 is called in a worker process,
     % and the state is updated asynchronously
     %  -- to put in another way, perhaps it'll be better
     %     just to disallow character state changes
-    {handle,3},
-    % handle_failure( Message, State, Channel ) -> Ignored
+    {handle,4},
+    % handle_failure( Message, State, Channel, CharacterRef ) -> Ignored
     % provides a way to nack a message
-    {handle_failure,3},
+    {handle_failure,4},
     % handle a message before it is published
     % publish_hook( pre, { #'basic.publish'{}, term() } ) -> { #'basic.publish'{}, binary() }
     % Use cases:
@@ -56,13 +56,16 @@ behaviour_info(callbacks) ->
 behaviour_info(_Other) ->
     undefined.
 
-start_link( {CharacterModule, ModuleArgs}, ConnectionName ) ->
-    gen_server:start_link({local, CharacterModule:name()}, ?MODULE, {{CharacterModule, ModuleArgs}, ConnectionName}, []).
+start_link( {CharacterName, _CharacterModule, _ModuleArgs} = CharInfo, ConnectionName ) ->
+    gen_server:start_link({local, CharacterName}, ?MODULE, {CharInfo, ConnectionName}, []).
 % start_link( CharacterModule, ConnectionName ) ->
 %     gen_server:start_link({local, CharacterModule:name()}, ?MODULE, {{CharacterModule, undefined}, ConnectionName}, []).
 
 init_amqp( Ref, AmqpChannel ) ->
     gen_server:call(Ref, {init_amqp, AmqpChannel}).
+
+name( Ref ) ->
+    gen_server:call(Ref, name).
 
 -spec publish( term(), {#'basic.publish'{}, #amqp_msg{}} ) -> ok | {error, connecting}.
 publish( ModName, AmqpPublishMessage ) ->
@@ -71,14 +74,17 @@ publish( ModName, AmqpPublishMessage ) ->
 %%%
 %%% Callbacks
 %%%
-init( {{Mod, Args}, ConnName} ) ->
-    {ok, #connecting_state{ module = Mod, mod_args = Args, conn_name = ConnName }, 0}.
+init( {{Name, Mod, Args}, ConnName} ) ->
+    {ok, #connecting_state{ name = Name, module = Mod, mod_args = Args, conn_name = ConnName }, 0}.
     % {ok, {register_connection, Mod,ConnName}, 0}.
 
-handle_call( {init_amqp, Channel}, _From, #connecting_state{ module = Mod, mod_args = Args } ) ->
+handle_call( {init_amqp, Channel}, _From, #connecting_state{ name = Name, module = Mod, mod_args = Args } ) ->
     erlang:monitor(process, Channel),
     {ok, ModState} = Mod:init(Channel, Args),
-    {reply, ok, #state{ module = Mod, channel = Channel, mod_state = ModState }};
+    {reply, ok, #state{ name = Name, module = Mod, channel = Channel, mod_state = ModState }};
+
+handle_call( name, _From, #state{ name = Name } = State ) ->
+    {reply, Name, State};
 
 % The client is responsible for retries, therefore if we are not yet connected,
 % return {error, connecting}
@@ -113,13 +119,13 @@ handle_cast( _Request, State ) ->
 handle_info( timeout, #connecting_state{ register = false } = State) ->
     {noreply, State};
 handle_info( timeout, #connecting_state{ register = true, conn_name = ConnName } = State ) ->
-    Res = self(),
+    Ref = self(),
     spawn(fun() ->
         % We need to call this function *outside* the gen_server,
         % because this calls init_amqp, which calls the gen_server,
         % which of course causes a deadlock.
         % Other possible fix? perhaps make amqp_init a cast.
-        amqp_director_connection_sup:register_character(ConnName, Res)
+        amqp_director_connection_sup:register_character(ConnName, Ref)
     end),
     {noreply, State#connecting_state{ register = false }};
 
@@ -145,7 +151,7 @@ handle_info({'DOWN', _, process, _Pid, normal}, State) ->
 % A worker process exited abnormally
 handle_info({'DOWN', _, process, Pid, _Reason}, #state{ module = Mod, channel = Chan, mod_state = ModState } = State) ->
     {State0, {Failure, _}} = remove_pending(State, Pid),
-    Mod:handle_failure(Failure, ModState, Chan),
+    Mod:handle_failure(Failure, ModState, Chan, self()),
     {noreply, State0};
 
 % ..not entirely sure it should be here..
@@ -161,7 +167,7 @@ handle_info({#'basic.deliver'{}, _Contents} = AmqpMessage, #state{ module = Mod,
     Ref = self(),
     {Pid, Monitor} = spawn_monitor( fun() ->
         ToDeliver = Mod:deliver_hook( pre, AmqpMessage, Chan ),
-        case Mod:handle( ToDeliver, InnerState, Chan ) of
+        case Mod:handle( ToDeliver, InnerState, Chan, Ref ) of
             {ok, NewInnerState} ->
                 gen_server:cast(Ref, {new_inner_state, NewInnerState, self()});
             ok ->

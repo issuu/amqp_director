@@ -3,7 +3,7 @@
 
 % -compile(export_all).
 -export ([publish/1]).
--export ([name/0, init/2, handle/3, handle_failure/3, terminate/2, publish_hook/2, deliver_hook/3]).
+-export ([init/2, handle/4, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -15,7 +15,6 @@ publish( Payload ) ->
 
     amqp_director_character:publish(?MODULE, {Basic, Message}).
 
-name() -> ?MODULE.
 init( Chan, _Args ) ->
     io:format("initializing module~n", []),
     BindKey = queue(),
@@ -32,7 +31,7 @@ init( Chan, _Args ) ->
     Pid = spawn( fun() -> random_loop() end ),
     {ok, {Tag, Pid}}. 
 
-handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, {Tag, RPid}, Chan ) ->
+handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, {Tag, RPid}, Chan, _Ref ) ->
     RPid ! {req, self()},
     Random = receive
         {random, R} -> R
@@ -47,7 +46,7 @@ handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{
             ok
     end.
 
-handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel ) ->
+handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel, _Ref ) ->
     io:format("Uops, someting went wrong! Let's nack the message~n", []),
     amqp_channel:cast(Channel, #'basic.nack'{delivery_tag = DeliverTag}),
     ok.

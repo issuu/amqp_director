@@ -33,9 +33,9 @@ Refer to the `example` directory for sample code.
 
 To publish a message, use the function
 
-    amqp_director_character:publish( character_name(), {#'basic.publish'{}, #amqp_msg{}} ) -> ok | {error, Reason}
+    amqp_director_character:publish( character_ref(), {#'basic.publish'{}, #amqp_msg{}} ) -> ok | {error, Reason}
 
-The message will be published using the channel of the named character.
+The message will be published using the channel of the referenced character. A character reference can either be the name or the gen_serve PID.
 If something goes wrong (e.g. the connection has not been established yet), the function will return `{error, Reason}`.
 It is responsibility of the caller to react accordingly.
 
@@ -43,13 +43,12 @@ It is responsibility of the caller to react accordingly.
 
 `amqp_director_character` defines a behaviour, and its callbacks must be implemented:
 
- - `name() -> atom()`: returns the character name
  - `init( Amqp_channel, term() ) -> {ok, term()}`: initialize the character. Returns the character state.
  - `terminate( Reason, State ) -> Ignored`: gives the character a chance to clean up resources when terminating.
- - `handle( { #'basic.deliver'{}, #amqp_msg{} }, State, Amqp_channel ) -> {ok, NewState} | ok`: handle the
+ - `handle( { #'basic.deliver'{}, #amqp_msg{} }, State, Amqp_channel, CharPid ) -> {ok, NewState} | ok`: handle the
    reception of a message. Can optionally return a new character state. WARNING: the state will be asynchronously
    updated, as the `handle` callback is called in a separate process.
- - `handle_failure( { #'basic.deliver'{}, #amqp_msg{} }, State, Channel ) -> Ignored`:
+ - `handle_failure( { #'basic.deliver'{}, #amqp_msg{} }, State, Channel, CharPid ) -> Ignored`:
    should the handling of a message fail, this callback will be called. Useful for, e.g., `nack` Amqp or
    stats collection.
  - `publish_hook( pre, { #'basic.deliver'{}, #amqp_msg{} } ) -> { #'basic.deliver'{}, #amqp_msg{} }`:
@@ -68,9 +67,9 @@ to register a connection (where `connection_name() :: atom()`).
 Once at least a connection has been registered, it is possible to register characters using
 the function 
 
-    amqp_director:add_character( {module(), term()}, connection_name() )
+    amqp_director:add_character( {atom(), module(), term()}, connection_name() )
 
-where the first parameter is a tuple with a module and parameters that will be passed to the `init` callback.
+where the first parameter is a tuple with a character name, module and module parameters (the latter will be passed to the `init` callback).
 
 ### Adding connections and characters, the configuration way
 
@@ -78,7 +77,7 @@ Set the environment variables `connections` and `characters` of the `amqp_direct
 Both are list, here is an example:
 
     {connections, [ {conn_1, [{host,"localhost"}]}, {conn_2, [{username, "myuser"}, {host, "amqp.issuu.com"}]} ]}
-    {characters, [ {my_module_1, conn_1}, { {my_module_2, ["some",params]}, conn_1}, {my_module_3, conn_2} ]}
+    {characters, [ {my_module_1, conn_1}, { {my_module_2, ["some",params]}, conn_1}, { {another_2, my_module_2, ["other", params]}, conn_2} ]}
 
 Each connection tuple has the connection name and a `proplist` that (as of ver.0.0.1) can specify the `host`, `port`,
 `username` and `password` fields.
@@ -103,9 +102,13 @@ An `example_start` module could look like:
         ok = application:start( amqp_director ),
 
         amqp_director:add_connection( myconn, #amqp_params_network{} ),
-        amqp_director:add_character( {mycharacter, [my beautiful, 5]}, myconn ),
+        amqp_director:add_character( {mychar1, mycharacter, [my beautiful, 5]}, myconn ),
+        amqp_director:add_character( {mychar2, mycharacter, [my beautiful, 2]}, myconn ),
 
         %here you can send messages and bla bla
+        amqp_director_character:publish( mychar1, { #'basic.publish'{ routing_key = "somekey" }, #amqp_msg{ payload = <<"foo">> } } ),
+        ...
+
 
 And the `mycharacter` module:
 
@@ -114,18 +117,10 @@ And the `mycharacter` module:
 
     -include_lib("amqp_client/include/amqp_client.hrl").
 
-    -export ([publish/1]).
-    -export ([name/0, init/2, handle/3, handle_failure/3, terminate/2, publish_hook/2, deliver_hook/3]).
+    -export ([init/2, handle/4, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
 
     queue() -> <<"my_bautiful_queue">>.
 
-    publish( Payload ) ->
-        Basic = #'basic.publish'{ routing_key = queue() },
-        Message = #amqp_msg{ payload = term_to_binary(Payload) },
-
-        amqp_director_character:publish(?MODULE, {Basic, Message}).
-
-    name() -> ?MODULE.
     init( Chan, [my, beautiful, Args] ) ->
         io:format("initializing module~n", []),
         BindKey = queue(),
@@ -141,12 +136,15 @@ And the `mycharacter` module:
         #'basic.consume_ok'{ consumer_tag = Tag } = amqp_channel:subscribe(Chan, BasicConsume, self()),
         {ok, Tag}. 
 
-    handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan ) ->
+    handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan, CharRef ) ->
         io:format("Received: ~p~n", [binary_to_term(Payload)]),
         amqp_channel:cast(Chan, #'basic.ack'{delivery_tag = DTag}),
+        % example reply
+        amqp_director_character:publish( CharRef, { #'basic.publish'{}, #amqp_msg{ payload = <<"helo">> } } ),
+        %
         ok.
     
-    handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel ) ->
+    handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel, CharRef ) ->
         io:format("Uops, someting went wrong! Let's nack the message~n", []),
         amqp_channel:cast(Channel, #'basic.nack'{delivery_tag = DeliverTag}),
         ok.

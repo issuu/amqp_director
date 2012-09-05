@@ -30,11 +30,13 @@ setup_characters( {ok, CharacterDefs} ) ->
     ok;
 setup_characters( _ ) -> ok.
 
-make_character_module( Mod ) when is_atom( Mod ) -> {Mod, undefined};
+make_character_module( Mod ) when is_atom( Mod ) -> {Mod, Mod, undefined};
 % make_character_module( {abstract, Mod, Args} )
 %     when is_atom(Mod) ->
 %     {Mod:new(Args), undefined};
-make_character_module( {Mod, Args} ) -> {Mod, Args}.
+make_character_module( {Mod, Args} ) -> {Mod, Mod, Args};
+make_character_module( {Name, Mod, Args} ) ->
+    { amqp_director_named_character:new(Name,Mod), Args }.
 
 parse_connection( ParamsNetwork ) ->
     #amqp_params_network{

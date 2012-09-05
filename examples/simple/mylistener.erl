@@ -2,20 +2,19 @@
 -behaviour (amqp_director_character).
 
 % -compile(export_all).
--export ([publish/1]).
--export ([name/0, init/2, handle/3, handle_failure/3, terminate/2, publish_hook/2, deliver_hook/3]).
+-export ([publish/2]).
+-export ([init/2, handle/4, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 queue() -> <<"fz_test_simple">>.
 
-publish( Payload ) ->
+publish( Name, Payload ) ->
     Basic = #'basic.publish'{ routing_key = queue() },
     Message = #amqp_msg{ payload = term_to_binary(Payload) },
 
-    amqp_director_character:publish(?MODULE, {Basic, Message}).
+    amqp_director_character:publish(Name, {Basic, Message}).
 
-name() -> ?MODULE.
 init( Chan, _Args ) ->
     io:format("initializing module~n", []),
     BindKey = queue(),
@@ -31,12 +30,12 @@ init( Chan, _Args ) ->
     #'basic.consume_ok'{ consumer_tag = Tag } = amqp_channel:subscribe(Chan, BasicConsume, self()),
     {ok, Tag}. 
 
-handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan ) ->
+handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan, _Ref ) ->
     io:format("Received: ~p~n", [binary_to_term(Payload)]),
     amqp_channel:cast(Chan, #'basic.ack'{delivery_tag = DTag}),
     ok.
 
-handle_failure( _Msg, _State, _Chan) ->
+handle_failure( _Msg, _State, _Chan, _Ref) ->
     io:format("Uops, someting went wrong!~n", []),
     ok.
 
