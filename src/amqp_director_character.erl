@@ -32,11 +32,9 @@ behaviour_info(callbacks) ->
     {terminate,2},
     % handle_publish( {{ #'basic.publish'{}, #amqp_msg{} }, term()}, From, State ) -> {ok, NewState} | ok
     {handle_publish,3},
-    % handle( Message, State, Channel, CharacterRef ) -> {ok, NewState} | ok
+    % handle( Message, State, Channel, CharacterRef ) -> {ok, StateUpdateFun} | ok
     % Keep in mind that handle/3 is called in a worker process,
-    % and the state is updated asynchronously
-    %  -- to put in another way, perhaps it'll be better
-    %     just to disallow character state changes
+    % state is updated asynchronously
     {handle,4},
     % handle_failure( Message, State, Channel, CharacterRef ) -> Ignored
     % provides a way to nack a message
@@ -107,9 +105,9 @@ handle_call( {publish, AmqpPublishMessage, Args}, From, #state{ module = Mod, ch
     end,
     {reply, ok, State#state{ mod_state = InnerState0 }}.
 
-handle_cast( {new_inner_state, NewInner, Pid}, State ) ->
+handle_cast( {update_inner_state, UpdateFun, Pid}, #state{ mod_state=InnerState }=State ) ->
     State0 = remove_pending_discard(State, Pid),
-    {noreply, State0#state{ mod_state = NewInner }};
+    {noreply, State0#state{ mod_state = UpdateFun(InnerState) }};
 handle_cast( {remove_pending, Pid}, State ) ->
     {noreply, remove_pending_discard(State, Pid)};
 handle_cast( _Request, State ) ->
@@ -167,10 +165,10 @@ handle_info({#'basic.deliver'{}, _Contents} = AmqpMessage, #state{ module = Mod,
     {Pid, Monitor} = spawn_monitor( fun() ->
         ToDeliver = Mod:deliver_hook( pre, AmqpMessage, Chan ),
         case Mod:handle( ToDeliver, InnerState, Chan, Ref ) of
-            {ok, NewInnerState} ->
-                gen_server:cast(Ref, {new_inner_state, NewInnerState, self()});
+            {ok, StateUpdateFun} ->
+                gen_server:cast(Ref, {update_inner_state, StateUpdateFun, self()});
             ok ->
-                gen_server:cast(Ref, {remove_pending, self()})% could actually just ignore everything else..
+                gen_server:cast(Ref, {remove_pending, self()})
         end,
         Mod:deliver_hook( post, AmqpMessage, Chan )
     end ),
