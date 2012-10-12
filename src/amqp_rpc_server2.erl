@@ -108,7 +108,7 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         {noreply, State}
     end;
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
-    lager:warning("Closing down due to channel going down: ~p", [Reason]),
+    error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
 	{stop, Reason, State}.
 
 %% @private
@@ -141,7 +141,7 @@ try_connect(ConnectionRef, Q, QArgs, Fun, ReconnectTime) ->
        amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
        #state{channel = Channel, handler = Fun};
     {error, econnrefused} ->
-      lager:warning("RPC Server has no working connection, waiting"),
+      error_logger:error_msg("RPC Server has no working connection, waiting"),
       timer:send_after(ReconnectTime, self(), {reconnect, ConnectionRef, Q, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
       #state { channel = undefined, handler = Fun }
   end.

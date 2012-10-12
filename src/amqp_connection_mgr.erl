@@ -77,7 +77,7 @@ handle_cast(_Msg, State) ->
 
 %% @private
 handle_info({'DOWN', _, process, _ConnPid, Reason}, #state { info = Info } = State) ->
-    lager:warning("Connection ~p going down: ~p", [Info, Reason]),
+    error_logger:info_msg("Connection ~p going down: ~p", [Info, Reason]),
     {stop, Reason, State};
 handle_info({reconnect, ReconnectTime}, #state { conn = {error, _}} = State) ->
    {noreply, try_connect(State, ReconnectTime)};
@@ -96,7 +96,7 @@ try_connect(#state { info = ConnInfo } = State, ReconnectTime) ->
         erlang:monitor(process, Connection),
         State#state { conn = Connection };
       {error, econnrefused} ->
-        lager:error("Connection refused to AMQP, waiting a bit"),
+        error_logger:error_msg("Connection refused to AMQP, waiting a bit"),
         timer:send_after(ReconnectTime, self(), {reconnect, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
         State#state { conn = {error, econnrefused} }
     end.

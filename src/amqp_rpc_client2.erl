@@ -169,7 +169,7 @@ handle_info({reconnect, CRef, RoutingKey, ReconnectTime}, #state { channel = und
     {noreply, try_connect(CRef, RoutingKey, ReconnectTime)};
 handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
-    lager:warning("Channel ~p going down... stopping", [Channel]),
+    error_logger:info_msg("Channel ~p going down... stopping", [Channel]),
     {stop, {error, {channel_down, Reason}}, State};
 handle_info({#'basic.consume'{}, _Pid}, State) ->
     {noreply, State};
@@ -206,7 +206,7 @@ try_connect(ConnectionRef, RoutingKey, ReconnectTime) ->
           setup_consumer(State),
           State;
         {error, econnrefused} ->
-          lager:warning("RPC Client has no working channel, waiting"),
+          error_logger:info_msg("RPC Client has no working channel, waiting"),
           timer:send_after(ReconnectTime, self(), {reconnect, ConnectionRef, RoutingKey,
                                                               min(ReconnectTime * 2, ?MAX_RECONNECT)}),
           #state { channel = undefined }
