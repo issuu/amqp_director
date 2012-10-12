@@ -27,7 +27,7 @@
   when ConnectionRef :: pid(),
        ListenQueue :: binary(),
        LQArgs :: term(),
-       Fun :: fun ((binary()) -> binary()),
+       Fun :: fun ((binary()) -> {reply, binary()} | ack | reject | reject_no_requeue),
        WorkerCount :: pos_integer().
 start_link(ConnectionRef, ListenQueue, LQArgs, Fun, WorkerCount) ->
     supervisor:start_link(?MODULE, [ConnectionRef, ListenQueue, LQArgs, Fun, WorkerCount]).

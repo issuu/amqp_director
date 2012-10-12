@@ -47,13 +47,17 @@
 %% does not already exist (and checked if it does), you also need to supply
 %% queue arguments. Currently in the RabbitMQ native format. There is no provision
 %% for marking queues as durable at the moment.
+%%
+%% The function can return different kinds of messages depending on what it
+%% wants the server to do with the connection. You can either reply, ack, reject
+%% or finally reject the request with no requeueing.
 %% @end
 -type amqp_queue_args() :: list({binary(), atom(), term()}).
 -spec start_link(ConnectionRef, Queue, QueueArgs, RpcHandler) -> {ok, pid()}
   when ConnectionRef :: pid(),
        Queue :: binary(),
        QueueArgs :: amqp_queue_args(),
-       RpcHandler :: fun ((binary()) -> binary()).
+       RpcHandler :: fun ((binary()) -> {reply, binary()} | ack | reject | reject_no_requeue).
 start_link(ConnectionRef, Queue, QueueArgs, Fun) ->
     gen_server:start_link(?MODULE, [ConnectionRef, Queue, QueueArgs, Fun], []).
 
@@ -84,7 +88,7 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
     #'P_basic'{correlation_id = CorrelationId,
                reply_to = Q} = Props,
     case Fun(Payload) of
-      {ok, Response} ->
+      {reply, Response} ->
         Properties = #'P_basic'{correlation_id = CorrelationId},
         Publish = #'basic.publish'{exchange = <<>>,
                                    routing_key = Q,

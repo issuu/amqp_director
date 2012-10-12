@@ -69,7 +69,7 @@ cast(RpcClient, Payload) ->
 
 %% @equiv call(RpcClient, Payload, 5000)
 call(RpcClient, Payload) ->
-    call(RpcClient, {call, Payload}, 5000).
+    call(RpcClient, Payload, 5000).
 
 %% @doc Invokes an RPC. Note the caller of this function is responsible for
 %% encoding the request and decoding the response. If the timeout is hit, the
@@ -79,7 +79,7 @@ call(RpcClient, Payload) ->
   when RpcClient :: atom() | pid(),
        Request :: binary(),
        Timeout :: pos_integer(),
-       Response :: binary().
+       Response :: {ok, binary()} | {error, term()}.
 call(RpcClient, Payload, Timeout) ->
     gen_server:call(RpcClient, {call, Payload}, Timeout).
 
