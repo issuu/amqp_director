@@ -4,9 +4,13 @@
 
 -export([t_start/0, t/0]).
 
--spec f(binary()) -> {reply, binary()} | ack | reject | reject_no_requeue.
-f(<<"Hello">>) ->
-  {reply, <<"ok">>}.
+-spec f(Msg, ContentType, Type) -> {reply, binary(), binary()} | ack | reject | reject_no_requeue
+  when
+    Msg :: binary(),
+    ContentType :: binary(),
+    Type :: binary().
+f(<<"Hello.">>, _ContentType, _Type) ->
+  {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
 
 t_start() ->
 	application:start(amqp_client),
@@ -40,6 +44,6 @@ do_work(Parent, N) ->
 
 do_work_(0) -> ok;
 do_work_(N) ->
-	amqp_rpc_client2:call(client_connection, <<"Hello">>),
+	amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
 	do_work_(N-1).
 

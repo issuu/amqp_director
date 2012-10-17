@@ -86,10 +86,14 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
              #amqp_msg{props = Props, payload = Payload}},
             State = #state{handler = Fun, channel = Channel}) ->
     #'P_basic'{correlation_id = CorrelationId,
+               content_type = ContentType,
+               type = Type,
                reply_to = Q} = Props,
-    case Fun(Payload) of
-      {reply, Response} ->
-        Properties = #'P_basic'{correlation_id = CorrelationId},
+    case Fun(Payload, ContentType, Type) of
+      {reply, Response, CT} ->
+        Properties = #'P_basic'{correlation_id = CorrelationId,
+                                content_type = CT,
+                                type = <<"reply">>},
         Publish = #'basic.publish'{exchange = <<>>,
                                    routing_key = Q,
                                    mandatory = true},
