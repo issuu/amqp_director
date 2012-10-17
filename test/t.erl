@@ -20,10 +20,11 @@ t_start() ->
 	{ok, SPid} = amqp_server_sup:start_link(
 	    server_connection_mgr, ConnInfo, <<"test_queue">>,
 	                                     [{<<"x-message-ttl">>, long, 30000},
-	                                      {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}], fun f/1, 5),
-	{ok, CPid} = amqp_client_sup:start_link(
-	    client_connection, client_connection_mgr, 
-	    ConnInfo, <<"test_queue">>),
+	                                      {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}], fun f/3, 5),
+	ClientConfig =
+	  [{reply_queue, undefined},
+       {routing_key, <<"test_queue">>}],                               
+	{ok, CPid} = amqp_client_sup:start_link(client_connection, client_connection_mgr, ConnInfo, ClientConfig), 
 	{ok, SPid, CPid}.
 
 t() ->

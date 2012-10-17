@@ -55,7 +55,7 @@
        Configuration :: term(),
        ConnRef :: pid().
 start_link(Name, Configuration, ConnRef) ->
-    gen_server:start_link({local, Name}, ?MODULE, [ConnRef, Configuration], []).
+    gen_server:start_link({local, Name}, ?MODULE, [Configuration, ConnRef], []).
 
 %% @doc Send a fire-and-forget message to the queue.
 %% This implements the usual cast operation where a message is forwarded to a queue.
@@ -169,8 +169,8 @@ publish_cast(Payload, ContentType, Type,
 
 %% Sets up a reply queue and consumer within an existing channel
 %% @private
-init([ConnectionRef, Configuration]) ->
-	{ok, try_connect(ConnectionRef, Configuration, 1000)}.
+init([Configuration, ConnectionRef]) ->
+	{ok, try_connect(Configuration, ConnectionRef, 1000)}.
 	
 
 %% Closes the channel this gen_server instance started
@@ -205,8 +205,8 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% @private
-handle_info({reconnect, CRef, Configuration, ReconnectTime}, #state { channel = undefined }) ->
-    {noreply, try_connect(CRef, Configuration, ReconnectTime)};
+handle_info({reconnect, Configuration, CRef, ReconnectTime}, #state { channel = undefined }) ->
+    {noreply, try_connect(Configuration, CRef, ReconnectTime)};
 handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
     error_logger:info_msg("Channel ~p going down... stopping", [Channel]),
@@ -234,7 +234,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%--------------------------------------------------------------------------
     
-try_connect(ConnectionRef, Configuration, ReconnectTime) ->
+try_connect(Configuration, ConnectionRef, ReconnectTime) ->
 	case amqp_connection_mgr:fetch(ConnectionRef) of
 	    {ok, Connection} ->
 	      {ok, Channel} = amqp_connection:open_channel(Connection, {amqp_direct_consumer, [self()]}),
@@ -249,7 +249,7 @@ try_connect(ConnectionRef, Configuration, ReconnectTime) ->
           State;
         {error, econnrefused} ->
           error_logger:info_msg("RPC Client has no working channel, waiting"),
-          timer:send_after(ReconnectTime, self(), {reconnect, ConnectionRef, Configuration,
+          timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
                                                               min(ReconnectTime * 2, ?MAX_RECONNECT)}),
           #state { channel = undefined }
       end.

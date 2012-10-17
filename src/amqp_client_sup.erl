@@ -27,20 +27,20 @@
 %% <li>RoutingKey: The routing key to use.</li>
 %% </ul>
 %% @end
--spec start_link(EndPoint, ConnReg, ConnInfo, RoutingKey) -> {ok, pid()}
+-spec start_link(EndPoint, ConnReg, ConnInfo, ClientConfig) -> {ok, pid()}
   when EndPoint :: atom(),
        ConnReg :: atom(),
        ConnInfo :: #amqp_params_network{},
-       RoutingKey :: binary().
-start_link(EndPoint, ConnReg, ConnInfo, RoutingKey) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [EndPoint, ConnReg, ConnInfo, RoutingKey]).
+       ClientConfig :: list({atom(), term()}).
+start_link(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, [EndPoint, ConnReg, ConnInfo, ClientConfig]).
 
 %% ===================================================================
 
-init([EndPoint, ConnReg, ConnInfo, RoutingKey]) ->
+init([EndPoint, ConnReg, ConnInfo, ClientConfig]) ->
 	Connection = {connection, {amqp_connection_mgr, start_link, [ConnReg, ConnInfo]},
 	               permanent, 5000, worker, [amqp_connection_mgr]},
-	Client = {client, {amqp_rpc_client2, start_link, [EndPoint, ConnReg, RoutingKey]},
+	Client = {client, {amqp_rpc_client2, start_link, [EndPoint, ClientConfig , ConnReg]},
 	           permanent, 5000, worker, [amqp_rpc_client2]},
 	%% 10 times in an hour is the current death rate which is allowed.
     {ok, { {one_for_all, 10, 3600}, [Connection, Client]} }.
