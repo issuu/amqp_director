@@ -216,7 +216,7 @@ handle_info({#'basic.consume'{}, _Pid}, State) ->
 handle_info(#'basic.consume_ok'{}, State) ->
     {noreply, State};
 handle_info(#'basic.cancel'{}, State) ->
-    {noreply, State};
+    {stop, amqp_server_cancelled, State};
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
