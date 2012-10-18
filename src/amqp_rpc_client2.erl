@@ -92,18 +92,12 @@ call(RpcClient, Payload, ContentType, Timeout) ->
 
 %%--------------------------------------------------------------------------
 
-%% Initialize a set of queues.
-queue_initialize(_Channel, []) -> ok;
-queue_initialize(Channel, [#'queue.declare' { queue = Q} = QDec | Defns]) ->
-    #'queue.declare_ok' { queue = Q } = amqp_channel:call(Channel, QDec),
-    queue_initialize(Channel, Defns);
-queue_initialize(Channel, [#'queue.bind' {} = BindDec | Defns]) ->
-    #'queue.bind_ok' {} = amqp_channel:call(Channel, BindDec),
-    queue_initialize(Channel, Defns).
+
 
 %% Sets up a reply queue for this client to listen on
 setup_queues(State = #state{channel = Channel}, Configuration) ->
-    queue_initialize(Channel, proplists:get_value(queue_definitions, Configuration, [])),
+    queue_definitions:inject(Channel,
+                             proplists:get_value(queue_definitions, Configuration, [])),
 
     %% Configuration of the Reply queue:
     case proplists:get_value(reply_queue, Configuration) of
