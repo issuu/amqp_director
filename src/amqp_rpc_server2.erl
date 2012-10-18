@@ -73,6 +73,7 @@ handle_info(shutdown, State) ->
 
 %% @private
 handle_info({reconnect, CRef, Q, QArgs, Fun, ReconnectTime}, #state { channel = undefined }) ->
+	error_logger:info_report([trying_to_reconnect]),
     {noreply, try_connect(CRef, Q, QArgs, Fun, ReconnectTime)};
 handle_info({#'basic.consume'{}, _}, State) ->
     {noreply, State};
@@ -125,6 +126,8 @@ handle_cast(_Message, State) ->
 
 %% Closes the channel this gen_server instance started
 %% @private
+terminate(_Reason, #state { channel = undefined }) ->
+    ok;
 terminate(_Reason, #state{channel = Channel}) ->
     amqp_channel:close(Channel),
     ok.
