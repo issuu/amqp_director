@@ -144,11 +144,13 @@ try_connect(ConnectionRef, Q, QArgs, Fun, ReconnectTime) ->
        {ok, Channel} = amqp_connection:open_channel(
                           Connection, {amqp_direct_consumer, [self()]}),
        erlang:monitor(process, Channel),
-       amqp_channel:call(Channel, #'queue.declare'{queue = Q, arguments = QArgs }),
-       amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
+       #'queue.declare_ok' { queue = Q } =
+           amqp_channel:call(Channel, #'queue.declare'{queue = Q, arguments = QArgs }),
+       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
        #state{channel = Channel, handler = Fun};
     {error, econnrefused} ->
-      error_logger:error_msg("RPC Server has no working connection, waiting"),
-      timer:send_after(ReconnectTime, self(), {reconnect, ConnectionRef, Q, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+      error_logger:error_report([no_connection]),
+      timer:send_after(ReconnectTime, self(),
+                       {reconnect, ConnectionRef, Q, QArgs, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
       #state { channel = undefined, handler = Fun }
   end.
