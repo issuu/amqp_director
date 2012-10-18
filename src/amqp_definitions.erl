@@ -1,5 +1,7 @@
 -module(amqp_definitions).
 
+-include_lib("amqp_client/include/amqp_client.hrl").
+
 -export([inject/2]).
 
 %% Initialize a set of queues.

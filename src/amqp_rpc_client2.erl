@@ -96,7 +96,7 @@ call(RpcClient, Payload, ContentType, Timeout) ->
 
 %% Sets up a reply queue for this client to listen on
 setup_queues(State = #state{channel = Channel}, Configuration) ->
-    queue_definitions:inject(Channel,
+    amqp_definitions:inject(Channel,
                              proplists:get_value(queue_definitions, Configuration, [])),
 
     %% Configuration of the Reply queue:

@@ -28,24 +28,49 @@ choice, so the link becomes part of your application. Suppose we have:
 
 	ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
 		                              host = "localhost", port = 5672 },
+    QArgs = [{<<"x-message-ttl">>, long, 30000},
+             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+    Config =
+       [{reply_queue, undefined},
+        {routing_key, <<"test_queue">>},
+        % {exchange, <<>>}, % This is the default
+        {consume_queue, <<"test_queue">>},
+        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
+                                                arguments = QArgs }]}],
 
-Which is a local AMQP connection. Now we can define a server:
+`ConnInfo` is a local AMQP connection. The `Config` is a configuration suitable for
+both a client and a server.
+
+* The key `reply_queue` tells us if there should be an explicitly named reply queue.
+  the default is just to create one randomly.
+* The key `routing_key` tells the client part where to route outgoing messages.
+* The key `exchange` is optional and tells what exchange to set. It can be set as a
+  topic exchange for instance so one can route messages by topic.
+* The key `consume_queue` tells the server to consume from this queue. It is an error
+  to try running a server without a queue to consume on.
+* Finally, `queue_definitions` is a list of queue definitions to inject into the AMQP
+  system. Currently we only support `#'queue.declare'{}` and `#'queue.bind'{}` but it
+  can rather easily be extended.
+
+Now we can define a server:
 			                                  
 	{ok, SPid} = amqp_server_sup:start_link(
-	    server_connection_mgr, ConnInfo, <<"test_queue">>,
-	    [{<<"x-message-ttl">>, long, 30000},
-	     {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}], F, 5),
+	    server_connection_mgr, ConnInfo, Config, F, 5),
 
 This gives us back a supervisor tree where we have a queue `<<"test_queue">>`, configured
-with a time out and a dead-letter support. We have defined that the function identified by
-`F` should be run upon message consumption and that we want 5 static workers. F could look
-like
+with a time out and a dead-letter support (see the `Config` binding above). We have defined that
+the function identified by `F` should be run upon message consumption and that we want 5 static
+workers. F could look like
 
-	-spec f(binary()) -> {reply, binary()} | ack | reject | reject_no_requeue.
-	f(_Request) ->
-	  {reply, <<"ok">>}.
+	-spec f(Msg, ContentType, Type) -> {reply, binary(), binary()} | ack | reject | reject_no_requeue
+	  when
+	    Msg :: binary(),
+	    ContentType :: binary(),
+	    Type :: binary().
+	f(<<"Hello.">>, _ContentType, _Type) ->
+	    {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
 
-which will just consume any message and produce an "Ok" response. Note the other return possibilities.
+which will just consume any message and produce an "ok." response. Note the other return possibilities.
 You can `ack` the message if you don't want to reply with anything. You can `reject` the message which
 means it will be requeued again for someone else to consume. You can also `reject_no_requeue` if you
 want to reject the request and not have it requeued. The semantics then depend on dead-lettering of the
@@ -53,15 +78,9 @@ AMQP queue.
 
 A client tree can be started with the following piece of code
 
-    QArgs = [{<<"x-message-ttl">>, long, 30000},
-             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
-	ClientConfig =
-	       [{reply_queue, undefined},
-	        {routing_key, <<"test_queue">>},
-	        {exchange, <<>>}, % Default value if omitted.
-	        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
+    
 	{ok, CPid} = amqp_client_sup:start_link(
-	    client_connection, client_connection_mgr, ConnInfo, ClientConfig),
+	    client_connection, client_connection_mgr, ConnInfo, Config),
 
 which will start up a client, registered on the name `client_connection`. The `client_connection_mgr`
 is the registered name of the connection manager process so you can alter that to your liking. The

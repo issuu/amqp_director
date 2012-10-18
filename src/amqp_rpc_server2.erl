@@ -33,7 +33,7 @@
 
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2]).
--export([start_link/4]).
+-export([start_link/3]).
 
 -record(state, {channel, handler}).
 -define(MAX_RECONNECT, timer:seconds(30)).
@@ -52,29 +52,27 @@
 %% wants the server to do with the connection. You can either reply, ack, reject
 %% or finally reject the request with no requeueing.
 %% @end
--type amqp_queue_args() :: list({binary(), atom(), term()}).
--spec start_link(ConnectionRef, Queue, QueueArgs, RpcHandler) -> {ok, pid()}
+-spec start_link(ConnectionRef, Config, RpcHandler) -> {ok, pid()}
   when ConnectionRef :: pid(),
-       Queue :: binary(),
-       QueueArgs :: amqp_queue_args(),
+       Config :: list({atom(), term()}),
        RpcHandler :: fun ((binary()) -> {reply, binary()} | ack | reject | reject_no_requeue).
-start_link(ConnectionRef, Queue, QueueArgs, Fun) ->
-    gen_server:start_link(?MODULE, [ConnectionRef, Queue, QueueArgs, Fun], []).
+start_link(ConnectionRef, Config, Fun) ->
+    gen_server:start_link(?MODULE, [ConnectionRef, Config, Fun], []).
 
 %%--------------------------------------------------------------------------
 
 %% @private
-init([ConnectionRef, Q, QArgs, Fun]) ->
-	{ok, try_connect(ConnectionRef, Q, QArgs, Fun, 1000)}.
+init([ConnectionRef, Config, Fun]) ->
+	{ok, try_connect(ConnectionRef, Config, Fun, 1000)}.
       
 %% @private
 handle_info(shutdown, State) ->
     {stop, normal, State};
 
 %% @private
-handle_info({reconnect, CRef, Q, QArgs, Fun, ReconnectTime}, #state { channel = undefined }) ->
+handle_info({reconnect, CRef, Config, Fun, ReconnectTime}, #state { channel = undefined }) ->
 	error_logger:info_report([trying_to_reconnect]),
-    {noreply, try_connect(CRef, Q, QArgs, Fun, ReconnectTime)};
+    {noreply, try_connect(CRef, Config, Fun, ReconnectTime)};
 handle_info({#'basic.consume'{}, _}, State) ->
     {noreply, State};
 handle_info(#'basic.consume_ok'{}, State) ->
@@ -138,19 +136,24 @@ code_change(_OldVsn, State, _Extra) ->
     
 %%--------------------------------------------------------------------------
 
-try_connect(ConnectionRef, Q, QArgs, Fun, ReconnectTime) ->
+try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
   case amqp_connection_mgr:fetch(ConnectionRef) of
     {ok, Connection} ->
        {ok, Channel} = amqp_connection:open_channel(
                           Connection, {amqp_direct_consumer, [self()]}),
        erlang:monitor(process, Channel),
-       #'queue.declare_ok' { queue = Q } =
-           amqp_channel:call(Channel, #'queue.declare'{queue = Q, arguments = QArgs }),
-       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
-       #state{channel = Channel, handler = Fun};
+       ok = amqp_definitions:inject(Channel,
+                                     proplists:get_value(queue_definitions, Config, [])),
+       case proplists:get_value(consume_queue, Config, undefined) of
+         undefined ->
+           exit(no_queue_to_consume);
+         Q ->
+           #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
+           #state{channel = Channel, handler = Fun}
+       end;
     {error, econnrefused} ->
       error_logger:error_report([no_connection]),
       timer:send_after(ReconnectTime, self(),
-                       {reconnect, ConnectionRef, Q, QArgs, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+                       {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
       #state { channel = undefined, handler = Fun }
   end.

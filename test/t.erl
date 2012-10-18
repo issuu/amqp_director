@@ -28,15 +28,17 @@ t_start() ->
                                       host = "localhost", port = 5672 },
     QArgs = [{<<"x-message-ttl">>, long, 30000},
              {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
-     {ok, SPid} = amqp_server_sup:start_link(
-         server_connection_mgr, ConnInfo, <<"test_queue">>, QArgs, fun f/3, 5),
-    ClientConfig =
+    Config =
        [{reply_queue, undefined},
-       {routing_key, <<"test_queue">>},
-       {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
-                                               arguments = QArgs }]}],
-     {ok, CPid} = amqp_client_sup:start_link(client_connection,
-                                             client_connection_mgr, ConnInfo, ClientConfig),
+        {routing_key, <<"test_queue">>},
+        % {exchange, <<>>}, % This is the default
+        {consume_queue, <<"test_queue">>},
+        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
+                                                arguments = QArgs }]}],
+    {ok, SPid} = amqp_server_sup:start_link(
+         server_connection_mgr, ConnInfo, Config, fun f/3, 5),
+    {ok, CPid} = amqp_client_sup:start_link(client_connection,
+                                             client_connection_mgr, ConnInfo, Config),
      {ok, SPid, CPid}.
 
 
