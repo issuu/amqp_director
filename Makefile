@@ -14,6 +14,12 @@ compile:
 clean:
 	rebar clean
 
+## A way to test the system
+console:
+	erlc -I deps test/t.erl
+	erl -boot start_sasl -pa ebin deps/*/ebin
+
+## Dialyzer stuff follows
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
 	xmerl webtool snmp public_key mnesia eunit syntax_tools compiler
 COMBO_PLT = $(HOME)/.$(REPO)_combo_dialyzer_plt

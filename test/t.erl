@@ -45,6 +45,6 @@ do_work(Parent, N) ->
 
 do_work_(0) -> ok;
 do_work_(N) ->
-	amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
+	{ok, <<"ok.">>, _} = amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
 	do_work_(N-1).
 
