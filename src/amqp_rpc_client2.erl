@@ -220,11 +220,12 @@ handle_info(#'basic.cancel'{}, State) ->
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
-            #amqp_msg{props = #'P_basic'{correlation_id = <<Id:64>>},
+            #amqp_msg{props = #'P_basic'{correlation_id = <<Id:64>>,
+                                         content_type = ContentType},
                                          payload = Payload}},
                             State = #state{continuations = Conts, channel = Channel}) ->
     From = dict:fetch(Id, Conts),
-    gen_server:reply(From, {ok, Payload}),
+    gen_server:reply(From, {ok, Payload, ContentType}),
     amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
     {noreply, State#state{continuations = dict:erase(Id, Conts) }}.
 
