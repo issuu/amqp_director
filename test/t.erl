@@ -1,3 +1,12 @@
+%%% @doc Manual test module for the AMQP client code
+%%% This code is used to (manually) test the AMQP client code for correctness.
+%%% You use this code by first running `t:t_start()` which starts up the test workers.
+%%% Try doing this with and without a running RabbitMQ. When RabbitMQ is running, you can
+%%% do `t:t()' to run a test run where 100 workers are spawned and call through the system.
+%%% 
+%%% Try killing different things from RabbitMQ/AMQP: A connection, a queue, all of the AMQP server,
+%%% etc. This will verify that the system correctly restarts when an error occurs.
+%%% @end
 -module(t).
 
 -include_lib("amqp_client/include/amqp_client.hrl").

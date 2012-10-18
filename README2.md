@@ -27,7 +27,7 @@ The library exposes two supervisors, intended for embedding into another supervi
 choice, so the link becomes part of your application. Suppose we have:
 
 	ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
-		                                  host = "localhost", port = 5672 },
+		                              host = "localhost", port = 5672 },
 
 Which is a local AMQP connection. Now we can define a server:
 			                                  
@@ -53,22 +53,31 @@ AMQP queue.
 
 A client tree can be started with the following piece of code
 
+    QArgs = [{<<"x-message-ttl">>, long, 30000},
+             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+	ClientConfig =
+	       [{reply_queue, undefined},
+	        {routing_key, <<"test_queue">>},
+	        {exchange, <<>>}, % Default value if omitted.
+	        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
 	{ok, CPid} = amqp_client_sup:start_link(
-	    client_connection, client_connection_mgr, 
-	    ConnInfo, <<"test_queue">>),
+	    client_connection, client_connection_mgr, ConnInfo, ClientConfig),
 
 which will start up a client, registered on the name `client_connection`. The `client_connection_mgr`
 is the registered name of the connection manager process so you can alter that to your liking. The
 `<<"test_queue">>` is a `RoutingKey` which tells AMQP where to route the message (what exchange to hit,
 normally).
 
-To use the newly spawned client, you issue a call:
+To use the newly spawned client, you issue a call with a payload and a content type (The type will
+automatically be set to `<<"request">>`:
 
-	amqp_rpc_client2:call(client_connection, <<"Hello">>),
+	{ok, Reply, ReplyContentType} =
+	  amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
 
-Or is you don't want to wait for the response:
+Or is you don't want to wait for the response, you supply a payload, a content type, and finally
+a "type" which says what kind of message this is:
 
-	amqp_rpc_client2:cast(client_connection, <<"Hello">>),
+	amqp_rpc_client2:cast(client_connection, <<"Hello">>, <<"application/x-erlang-term">>, <<"event">>),
 
 Note that the current semantics are such that if the queue is down, then the
 message is not going to be delivered to the queue. It will be black-holed instead.
