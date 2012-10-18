@@ -175,6 +175,8 @@ init([Configuration, ConnectionRef]) ->
 
 %% Closes the channel this gen_server instance started
 %% @private
+terminate(_Reason, #state { channel = undefined }) ->
+	ok;
 terminate(_Reason, #state{channel = Channel}) ->
     amqp_channel:close(Channel),
     ok.
