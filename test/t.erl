@@ -10,28 +10,32 @@
     ContentType :: binary(),
     Type :: binary().
 f(<<"Hello.">>, _ContentType, _Type) ->
-  {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
+    {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
 
 t_start() ->
-	application:start(amqp_client),
-	%% Spawn a RabbitMQ server system:
-	ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
-	                                  host = "localhost", port = 5672 },
-	{ok, SPid} = amqp_server_sup:start_link(
-	    server_connection_mgr, ConnInfo, <<"test_queue">>,
-	                                     [{<<"x-message-ttl">>, long, 30000},
-	                                      {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}], fun f/3, 5),
-	ClientConfig =
-	  [{reply_queue, undefined},
-       {routing_key, <<"test_queue">>}],                               
-	{ok, CPid} = amqp_client_sup:start_link(client_connection, client_connection_mgr, ConnInfo, ClientConfig), 
-	{ok, SPid, CPid}.
+    application:start(amqp_client),
+    %% Spawn a RabbitMQ server system:
+    ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
+                                      host = "localhost", port = 5672 },
+    QArgs = [{<<"x-message-ttl">>, long, 30000},
+             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+     {ok, SPid} = amqp_server_sup:start_link(
+         server_connection_mgr, ConnInfo, <<"test_queue">>, QArgs, fun f/3, 5),
+    ClientConfig =
+       [{reply_queue, undefined},
+       {routing_key, <<"test_queue">>},
+       {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
+                                               arguments = QArgs }]}],
+     {ok, CPid} = amqp_client_sup:start_link(client_connection,
+                                             client_connection_mgr, ConnInfo, ClientConfig),
+     {ok, SPid, CPid}.
+
 
 t() ->
     Parent = self(),
-	Pids = [spawn_link(fun () -> do_work(Parent, 1000) end) || _ <- lists:seq(1, 100)],
-	collect(Pids).
-	
+    Pids = [spawn_link(fun () -> do_work(Parent, 1000) end) || _ <- lists:seq(1, 100)],
+    collect(Pids).
+
 collect([]) ->
   done;
 collect(Pids) ->
@@ -45,6 +49,6 @@ do_work(Parent, N) ->
 
 do_work_(0) -> ok;
 do_work_(N) ->
-	{ok, <<"ok.">>, _} = amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
-	do_work_(N-1).
+    {ok, <<"ok.">>, _} = amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
+    do_work_(N-1).
 
