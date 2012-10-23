@@ -137,23 +137,32 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------------
 
 try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
+    try
+        connect(ConnectionRef, Config, Fun)
+    catch
+     throw:reconnect ->
+        error_logger:error_report([no_connection]),
+        timer:send_after(ReconnectTime, self(),
+                         {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+        #state { channel = undefined, handler = Fun }
+  end.
+
+connect(ConnectionRef, Config, Fun) ->
   case amqp_connection_mgr:fetch(ConnectionRef) of
+    {error, econnrefused} -> throw(reconnect);
     {ok, Connection} ->
-       {ok, Channel} = amqp_connection:open_channel(
-                          Connection, {amqp_direct_consumer, [self()]}),
-       erlang:monitor(process, Channel),
-       ok = amqp_definitions:inject(Channel,
-                                     proplists:get_value(queue_definitions, Config, [])),
-       case proplists:get_value(consume_queue, Config, undefined) of
-         undefined ->
-           exit(no_queue_to_consume);
-         Q ->
-           #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
-           #state{channel = Channel, handler = Fun}
-       end;
-    {error, econnrefused} ->
-      error_logger:error_report([no_connection]),
-      timer:send_after(ReconnectTime, self(),
-                       {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
-      #state { channel = undefined, handler = Fun }
+        case amqp_connection:open_channel(
+                          Connection, {amqp_direct_consumer, [self()]}) of
+            {ok, Channel} ->
+              erlang:monitor(process, Channel),
+              ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
+              case proplists:get_value(consume_queue, Config, undefined) of
+                  undefined -> exit(no_queue_to_consume);
+                  Q ->
+                      #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
+                      #state{channel = Channel, handler = Fun}
+              end;
+           closing ->
+             throw(reconnect)
+       end
   end.
