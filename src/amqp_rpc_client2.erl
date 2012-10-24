@@ -33,7 +33,7 @@
 -export([start_link/3]).
 -export([cast/4, call/3, call/4]).
 -export([init/1, terminate/2, code_change/3, handle_call/3,
-         handle_cast/2, handle_info/2]).
+         handle_cast/2, handle_info/2, format_status/2]).
 
 -record(state, {channel,
                 reply_queue,
@@ -41,6 +41,7 @@
                 exchange,
                 routing_key,
                 continuations = dict:new(),
+                monitors = dict:new(),
                 correlation_id = 0}).
 
 -define(MAX_RECONNECT, timer:seconds(30)).
@@ -121,13 +122,14 @@ setup_consumer(#state{channel = Channel, reply_queue = Q}) ->
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
 %% the next request
-publish(Payload, ContentType, From,
+publish(Payload, ContentType, {Pid, _Tag} = From,
         State = #state{channel = Channel,
                        reply_queue = Q,
                        exchange = X,
                        routing_key = RoutingKey,
                        correlation_id = CorrelationId,
                        app_id = AppId,
+                       monitors = Monitors,
                        continuations = Continuations}) ->
     %% Properties should follow the rules of:
     %% http://trac.tissuu.com:8000/trac/wiki/IssuuAmqp
@@ -142,8 +144,10 @@ publish(Payload, ContentType, From,
     amqp_channel:call(Channel, Publish,
                       #amqp_msg{props = Props,
                                 payload = Payload}),
+    Ref = erlang:monitor(process, Pid),
     State#state{correlation_id = CorrelationId + 1,
-                continuations = dict:store(CorrelationId, From, Continuations)}.
+                continuations = dict:store(CorrelationId, {From, Ref}, Continuations),
+                monitors = dict:store(Ref, CorrelationId, Monitors)}.
 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, ContentType, Type,
@@ -210,6 +214,19 @@ handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
     error_logger:info_msg("Channel ~p going down... stopping", [Channel]),
     {stop, {error, {channel_down, Reason}}, State#state{ channel = undefined }};
+handle_info({'DOWN', MRef, process, _Pid, _Reason},
+            #state { continuations = Continuations,
+                     monitors = Monitors } = State) ->
+    %% A client caller went down, usually due to a timeout
+    case dict:find(MRef, Monitors) of
+        error ->
+            %% Stray Monitor. This can happen in a close-down-timeout-race
+            {noreply, State};
+        {ok, Id} ->
+            %% Remove the Id as we can't use it anymore
+            {noreply, State#state { continuations = dict:erase(Id, Continuations),
+                                    monitors      = dict:erase(MRef, Monitors) }}
+    end;
 handle_info({#'basic.consume'{}, _Pid}, State) ->
     {noreply, State};
 handle_info(#'basic.consume_ok'{}, State) ->
@@ -222,16 +239,37 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
             #amqp_msg{props = #'P_basic'{correlation_id = <<Id:64>>,
                                          content_type = ContentType},
                                          payload = Payload}},
-                            State = #state{continuations = Conts, channel = Channel}) ->
-    From = dict:fetch(Id, Conts),
-    gen_server:reply(From, {ok, Payload, ContentType}),
-    amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
-    {noreply, State#state{continuations = dict:erase(Id, Conts) }}.
-
+           State = #state{ continuations = Conts,
+                           monitors = Monitors,
+                           channel = Channel }) ->
+    case dict:find(Id, Conts) of
+        error ->
+            %% Stray message. If the client has timed out, this can happen
+            {noreply, State};
+        {ok, {From, MonitorRef}} ->
+             erlang:demonitor(MonitorRef),
+             gen_server:reply(From, {ok, Payload, ContentType}),
+             amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
+             {noreply, State#state{ continuations = dict:erase(Id, Conts),
+                                    monitors = dict:erase(MonitorRef, Monitors) }}
+    end.
+    
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     State.
 
+format_status(_, [_Pdict, #state { continuations = Conts,
+                                   monitors = Monitors,
+                                   correlation_id = Cid,
+                                   channel = Channel,
+                                   routing_key = RoutingKey }]) ->
+    St = [{continuation_size, dict:size(Conts)},
+          {monitor_size, dict:size(Monitors)},
+          {correlation_id, Cid},
+          {channel, Channel},
+          {routing_key, RoutingKey}],
+    {data, [{"State", St}]}.
+     
 %%--------------------------------------------------------------------------
     
 try_connect(Configuration, ConnectionRef, ReconnectTime) ->
