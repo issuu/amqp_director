@@ -116,7 +116,7 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
     end;
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
     error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
-	{stop, Reason, State}.
+	{stop, Reason, State#state{ channel = undefined }}.
 
 %% @private
 handle_call(stop, _From, State) ->
