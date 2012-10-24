@@ -206,7 +206,7 @@ handle_info({reconnect, Configuration, CRef, ReconnectTime}, #state { channel = 
 handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
     error_logger:info_msg("Channel ~p going down... stopping", [Channel]),
-    {stop, {error, {channel_down, Reason}}, State};
+    {stop, {error, {channel_down, Reason}}, State#state{ channel = undefined }};
 handle_info({#'basic.consume'{}, _Pid}, State) ->
     {noreply, State};
 handle_info(#'basic.consume_ok'{}, State) ->
