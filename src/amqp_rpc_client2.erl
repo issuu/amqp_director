@@ -164,7 +164,10 @@ publish_cast(Payload, ContentType, Type,
 %% Sets up a reply queue and consumer within an existing channel
 %% @private
 init([Configuration, ConnectionRef]) ->
-	{ok, try_connect(Configuration, ConnectionRef, 1000)}.
+    ReconnectTime = 500,
+    timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
+                                             min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+	{ok, #state { channel = undefined }}.
 	
 
 %% Closes the channel this gen_server instance started

@@ -63,7 +63,11 @@ start_link(ConnectionRef, Config, Fun) ->
 
 %% @private
 init([ConnectionRef, Config, Fun]) ->
-	{ok, try_connect(ConnectionRef, Config, Fun, 1000)}.
+    ReconnectTime = 500,
+	timer:send_after(ReconnectTime, self(),
+                     {reconnect, ConnectionRef, Config, Fun,
+                      min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+	{ok, #state { channel = undefined, handler = Fun }}.
       
 %% @private
 handle_info(shutdown, State) ->
