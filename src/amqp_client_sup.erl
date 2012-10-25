@@ -33,7 +33,7 @@
        ConnInfo :: #amqp_params_network{},
        ClientConfig :: list({atom(), term()}).
 start_link(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [EndPoint, ConnReg, ConnInfo, ClientConfig]).
+    supervisor:start_link(?MODULE, [EndPoint, ConnReg, ConnInfo, ClientConfig]).
 
 %% ===================================================================
 
