@@ -33,6 +33,7 @@ choice, so the link becomes part of your application. Suppose we have:
     Config =
        [{reply_queue, undefined},
         {routing_key, <<"test_queue">>},
+        % {consumer_tag, <<>>}, % This is the default
         % {exchange, <<>>}, % This is the default
         {consume_queue, <<"test_queue">>},
         {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
@@ -44,6 +45,7 @@ both a client and a server.
 * The key `reply_queue` tells us if there should be an explicitly named reply queue.
   the default is just to create one randomly.
 * The key `routing_key` tells the client part where to route outgoing messages.
+* The key `consumer_tag` is optional and tells what consumer tag to set.
 * The key `exchange` is optional and tells what exchange to set. It can be set as a
   topic exchange for instance so one can route messages by topic.
 * The key `consume_queue` tells the server to consume from this queue. It is an error
