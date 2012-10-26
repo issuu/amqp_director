@@ -30,6 +30,7 @@ t_start() ->
              {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
     Config =
        [{reply_queue, undefined},
+        {consumer_tag, <<"my.consumer">>},
         {routing_key, <<"test_queue">>},
         % {exchange, <<>>}, % This is the default
         {consume_queue, <<"test_queue">>},
