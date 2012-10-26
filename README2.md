@@ -105,3 +105,74 @@ message is not going to be delivered to the queue. It will be black-holed instea
 This can happen if the connection to AMQP is lost and we are sitting in a reconnect
 loop waiting for the connection to come back up. Then the server acts like as if
 a cast without a pid().
+
+## Configuration facilities
+
+Besides manually configuring amqp rpc clients and servers, the library provides a way to embed
+these information in an application configuration file.
+
+This facility is provided in the form of a function that returns a list of `supervisor:child_spec()`,
+which can then be added to a supervisor tree.
+
+The function `amqp_director:children_specs/1` expect as parameter an application name, where 
+the environment configuration variable `amqp_director` must defined.
+
+An example configuration for application `sample`:
+
+    {application, sample, [
+      ...
+      {env, [
+        ...
+        {amqp_director, [
+          {connections, [
+            {default_conn, "localhost", undefined, <<"guest">>, <<"guest">>}, ...
+          ]},
+          {servers, [
+            {my_server, {my_server, handle},
+             default_conn, 20, [
+              {consume_queue, <<"my_server_queue">>},
+              {queue_definitions,
+                [{'queue.declare', [{queue, <<"my_server_queue">>}, {auto_delete, true}]}]
+              }
+             ]}, ...]},
+          {clients, [
+            {my_client,
+             default_conn, [
+              {reply_queue, undefined},
+              {routing_key, <<"some_route">>},
+              {queue_definitions,
+                [{'queue.declare', [{queue, <<"some_route">>}]}]
+              }
+            ]}, ...]}
+        ]}
+      ]}
+    ]}
+
+Assuming that the `sample` application has a main `sample_sup` supervisor,
+the amqp children specs are loaded calling `amqp_director:children_specs(sample)`:
+
+    -module (sample_sup).
+    -behaviour (supervisor).
+    ...
+    init( Args ) ->
+      ...
+      AmqpChildrenSpecs = amqp_director:children_specs(sample),
+      ...
+      {ok, { {RestartStrategy, MaxRestarts, MaxSecsBtwRestarts},
+       [ OtherChildSpecs ] ++ AmqpChildrenSpecs }}
+
+### Considerations
+
+If you have one or two amqp rpc servers/clients, then it is probably easier just to link
+them directly in your supervisor tree.
+
+Although a connection configuration can be used many times, each server/client gets its
+own connection. The sharing is only about the configuration.
+
+Elements in the `queue_definitions` configuration parameter list (for both server and client)
+have a special syntax:
+
+    { record_name, [ {field_name, value}, ... ] }
+
+A `record_name` instance is created (e.g. `#'queue.declare{}`), and for each defined `field_name` the `value`
+overrides the default record value (e.g. `{queue, <<"some_queue">>} ==> R#'queue.declare'{ queue = <<"some_queue">> }`).
