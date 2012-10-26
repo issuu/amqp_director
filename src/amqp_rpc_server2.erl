@@ -163,7 +163,8 @@ connect(ConnectionRef, Config, Fun) ->
               case proplists:get_value(consume_queue, Config, undefined) of
                   undefined -> exit(no_queue_to_consume);
                   Q ->
-                      #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
+                      ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>), 
+                      #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q, consumer_tag = ConsumerTag}),
                       #state{channel = Channel, handler = Fun}
               end;
            closing ->
