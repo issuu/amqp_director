@@ -3,7 +3,8 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 -export ([start/0, stop/0]).
--export ([children_specs/1]).
+-export ([children_specs/2]).
+-export ([child_spec/1]).
 -export ([add_connection/2, add_character/2]).
 
 start() ->
@@ -24,12 +25,12 @@ add_connection( Name, #amqp_params_network{} = AmqpConnInfo ) ->
 add_character( CharacterModAndArgs, ConnName ) ->
     amqp_director_character_sup:register_character(CharacterModAndArgs, ConnName).
 
--spec children_specs(atom()) -> [ supervisor:child_spec() ].
-children_specs(App) when is_atom(App) ->
+-type children_type() :: servers | clients | all.
+-spec children_specs(atom(), children_type()) -> [ supervisor:child_spec() ].
+children_specs(App, Type) when is_atom(App) ->
     {ok, Config} = application:get_env(App, amqp_director),
     ConnectionsConf = proplists:get_value(connections, Config), % will fail if not connection is defined
-    ServersConf = proplists:get_value(servers, Config, []),     % might not have any server
-    ClientsConf = proplists:get_value(clients, Config, []),     % might not have any client
+    ComponentsConf = proplists:get_value(components, Config),
 
     Connections = lists:foldl(fun ({Name, Host,Port,User,Pwd}, D) ->
         ConnInfo = #amqp_params_network{
@@ -41,31 +42,49 @@ children_specs(App) when is_atom(App) ->
         dict:store(Name, ConnInfo, D)
     end, dict:new(), ConnectionsConf),
 
-    Servers = [ server_specs(ServerConf, Connections) || ServerConf <- ServersConf ],
-    Clients = [ client_specs(ClientConf, Connections) || ClientConf <- ClientsConf ],
+    [ child_spec( prepare_conf(ChildConf, Connections) ) || ChildConf <- ComponentsConf, is_component_type(ChildConf, Type) ].
+    % lists:map(fun (ChildConf) ->
+    %     child_spec( prepare_conf(ChildConf, Connections) )
+    % end, lists:filter(fun (Conf) -> is_component_type(Conf, Type) end, ComponentsConf)). 
 
-    Servers ++ Clients.
+    % Servers = [ child_spec(Name, fun Mod:Fun/3, dict:fetch(ConnRef, Connections), Count, config(Config))
+    %     || {Name, {Mod, Fun}, ConnRef, Count, Config} <- ServersConf ],
+    % Clients = [ child_spec(Name, dict:fetch(ConnRef, Connections), config(Config)) 
+    %     || {Name, ConnRef, Config} <- ClientsConf ],
 
-%%%
-%%% Internals
-%%%
-server_specs({Name, {Mod,Fun}, ConnName, ServerCount, ServerConfig}, Connections) ->
-    ConnInfo = dict:fetch(ConnName, Connections),
-    ConnReg  = list_to_atom( atom_to_list(Name) ++ "_conn" ),
-    Config   = [ {K, setup_config(K, V)} || {K,V} <- ServerConfig ],
+    % Servers ++ Clients.
+
+-type child_conf() :: {atom(), {atom(), atom()}, #amqp_params_network{}, integer(), [{atom(), term()}]}
+                    | {atom(), #amqp_params_network{}, [{atom(), term()}]}.
+-spec child_spec( child_conf() ) -> supervisor:child_spec().
+child_spec( {Name, Fun, ConnInfo, ServersCount, Config} ) ->
+    ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
     {Name, {
         amqp_server_sup, start_link,
-        [ConnReg, ConnInfo, Config, fun Mod:Fun/3, ServerCount]
-    }, transient, infinity, supervisor, [amqp_server_sup]}.
-
-client_specs({Name, ConnName, ClientConfig}, Connections) ->
-    ConnInfo = dict:fetch(ConnName, Connections),
-    ConnReg  = list_to_atom( atom_to_list(Name) ++ "_conn" ),
-    Config   = [ {K, setup_config(K, V)} || {K,V} <- ClientConfig ],
+        [ConnReg, ConnInfo, Config, Fun, ServersCount]
+    }, transient, infinity, supervisor, [amqp_server_sup]};
+child_spec( {Name, ConnInfo, Config} ) ->
+    ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
     {Name, {
         amqp_client_sup, start_link,
         [Name, ConnReg, ConnInfo, Config]
     }, transient, infinity, supervisor, [amqp_client_sup]}.
+
+%%%
+%%% Internals
+%%%
+is_component_type( _Any, all ) -> true;
+is_component_type( {_Name, _ModFun, _ConnRef, _Count, _Conf}, servers ) -> true;
+is_component_type( {_Name, _ConnRef, _Conf}, clients ) -> true;
+is_component_type( _Component, _Type ) -> false.
+
+prepare_conf({Name, {Mod,Fun}, ConnRef, Count, Config}, Connections) ->
+    {Name, fun Mod:Fun/3, dict:fetch(ConnRef, Connections), Count, config(Config)};
+prepare_conf({Name, ConnRef, Config}, Connections) ->
+    {Name, ditch:fetch(ConnRef, Connections), config(Config)}.
+
+config(Config) ->
+    [ {K, setup_config(K, V)} || {K, V} <- Config ].
 
 setup_config(queue_definitions, Records) ->
     [ setup_amqp_record(Record) || Record <- Records ];
@@ -79,14 +98,16 @@ setup_amqp_record( {'queue.bind', KV} ) ->
     create_record(Fields, #'queue.bind'{}, KV).
 
 create_record(Fields, Empty, KVs) ->
+    % If the template contains fields not mentioned in the record definition, let us fail
     case lists:filter(fun ({Key, _}) -> not(lists:member(Key, Fields))  end, KVs) of
         [] -> ok;
         Some -> exit({bad_record_template, lists:nth(1, Fields), Some})
     end, 
+    % zip field names and empty record
     FieldsValues = lists:zip( [record_name]++Fields, tuple_to_list(Empty) ),
-    NewValues = lists:map(fun ({Key, V}) ->
-        proplists:get_value(Key, KVs, V)
-    end, FieldsValues),
+    % map the zipped list to the new values
+    NewValues = [ proplists:get_value(Key, KVs, Value) || {Key, Value} <- FieldsValues ],
+    % return the newly constructed record
     list_to_tuple(NewValues).
 
 
