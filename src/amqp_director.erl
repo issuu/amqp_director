@@ -71,7 +71,7 @@ is_component_type( _Component, _Type ) -> false.
 prepare_conf({Name, {Mod,Fun}, ConnRef, Count, Config}, Connections) ->
     {Name, fun Mod:Fun/3, dict:fetch(ConnRef, Connections), Count, config(Config)};
 prepare_conf({Name, ConnRef, Config}, Connections) ->
-    {Name, ditch:fetch(ConnRef, Connections), config(Config)}.
+    {Name, dict:fetch(ConnRef, Connections), config(Config)}.
 
 config(Config) ->
     [ {K, setup_config(K, V)} || {K, V} <- Config ].
