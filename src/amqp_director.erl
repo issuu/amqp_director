@@ -78,8 +78,11 @@ setup_amqp_record( {'queue.bind', KV} ) ->
     Fields = record_info(fields, 'queue.bind'),
     create_record(Fields, #'queue.bind'{}, KV).
 
-
 create_record(Fields, Empty, KVs) ->
+    case lists:filter(fun ({Key, _}) -> not(lists:member(Key, Fields))  end, KVs) of
+        [] -> ok;
+        Some -> exit({bad_record_template, lists:nth(1, Fields), Some})
+    end, 
     FieldsValues = lists:zip( [record_name]++Fields, tuple_to_list(Empty) ),
     NewValues = lists:map(fun ({Key, V}) ->
         proplists:get_value(Key, KVs, V)
