@@ -150,7 +150,10 @@ An example configuration for application `sample`:
     ]}
 
 Assuming that the `sample` application has a main `sample_sup` supervisor,
-the amqp children specs are loaded calling `amqp_director:children_specs(sample)`:
+the amqp children specs are loaded calling `amqp_director:children_specs(sample, ChildType)`.
+The usual case is that `clients` need to be started before the components that use them,
+while `servers` should be started after the components that need to be used by the handling functions,
+so the `sample` supervisor should look like the following code:
 
     -module (sample_sup).
     -behaviour (supervisor).
@@ -160,11 +163,10 @@ the amqp children specs are loaded calling `amqp_director:children_specs(sample)
       AmqpClientsSpecs = amqp_director:children_specs(sample, clients),
       AmqpServersSpecs = amqp_director:children_specs(sample, servers),
       ...
+      OtherChildren = [MyGenserver1,...],
       {ok, { {RestartStrategy, MaxRestarts, MaxSecsBtwRestarts},
-       AmqpClientsSpecs ++ [ OtherChildSpecs ] ++ AmqpServersSpecs }}
+       AmqpClientsSpecs ++ OtherChildren ++ AmqpServersSpecs }}.
 
-The usual case is that `clients` needs to be started before the other components that use them,
-while `servers` should be started after the components that needs to be used by the handling function.
 
 ### Considerations
 
