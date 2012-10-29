@@ -114,8 +114,9 @@ these information in an application configuration file.
 This facility is provided in the form of a function that returns a list of `supervisor:child_spec()`,
 which can then be added to a supervisor tree.
 
-The function `amqp_director:children_specs/1` expect as parameter an application name, where 
-the environment configuration variable `amqp_director` must defined.
+The function `amqp_director:children_specs/2` expect as parameter an application name, where 
+the environment configuration variable `amqp_director` must defined, and a component type, which
+can be one of `servers`, `clients` or `all`.
 
 An example configuration for application `sample`:
 
@@ -127,15 +128,14 @@ An example configuration for application `sample`:
           {connections, [
             {default_conn, "localhost", undefined, <<"guest">>, <<"guest">>}, ...
           ]},
-          {servers, [
+          {components, [
             {my_server, {my_server, handle},
              default_conn, 20, [
               {consume_queue, <<"my_server_queue">>},
               {queue_definitions,
                 [{'queue.declare', [{queue, <<"my_server_queue">>}, {auto_delete, true}]}]
               }
-             ]}, ...]},
-          {clients, [
+             ]},
             {my_client,
              default_conn, [
               {reply_queue, undefined},
@@ -144,6 +144,7 @@ An example configuration for application `sample`:
                 [{'queue.declare', [{queue, <<"some_route">>}]}]
               }
             ]}, ...]}
+          ]}
         ]}
       ]}
     ]}
@@ -156,10 +157,14 @@ the amqp children specs are loaded calling `amqp_director:children_specs(sample)
     ...
     init( Args ) ->
       ...
-      AmqpChildrenSpecs = amqp_director:children_specs(sample),
+      AmqpClientsSpecs = amqp_director:children_specs(sample, clients),
+      AmqpServersSpecs = amqp_director:children_specs(sample, servers),
       ...
       {ok, { {RestartStrategy, MaxRestarts, MaxSecsBtwRestarts},
-       [ OtherChildSpecs ] ++ AmqpChildrenSpecs }}
+       AmqpClientsSpecs ++ [ OtherChildSpecs ] ++ AmqpServersSpecs }}
+
+The usual case is that `clients` needs to be started before the other components that use them,
+while `servers` should be started after the components that needs to be used by the handling function.
 
 ### Considerations
 

@@ -29,8 +29,8 @@ add_character( CharacterModAndArgs, ConnName ) ->
 -spec children_specs(atom(), children_type()) -> [ supervisor:child_spec() ].
 children_specs(App, Type) when is_atom(App) ->
     {ok, Config} = application:get_env(App, amqp_director),
-    ConnectionsConf = proplists:get_value(connections, Config), % will fail if not connection is defined
-    ComponentsConf = proplists:get_value(components, Config),
+    ConnectionsConf = proplists:get_value(connections, Config), % will fail if no connection is defined
+    ComponentsConf = proplists:get_value(components, Config),   % will fail if no component is defined
 
     Connections = lists:foldl(fun ({Name, Host,Port,User,Pwd}, D) ->
         ConnInfo = #amqp_params_network{
@@ -43,16 +43,6 @@ children_specs(App, Type) when is_atom(App) ->
     end, dict:new(), ConnectionsConf),
 
     [ child_spec( prepare_conf(ChildConf, Connections) ) || ChildConf <- ComponentsConf, is_component_type(ChildConf, Type) ].
-    % lists:map(fun (ChildConf) ->
-    %     child_spec( prepare_conf(ChildConf, Connections) )
-    % end, lists:filter(fun (Conf) -> is_component_type(Conf, Type) end, ComponentsConf)). 
-
-    % Servers = [ child_spec(Name, fun Mod:Fun/3, dict:fetch(ConnRef, Connections), Count, config(Config))
-    %     || {Name, {Mod, Fun}, ConnRef, Count, Config} <- ServersConf ],
-    % Clients = [ child_spec(Name, dict:fetch(ConnRef, Connections), config(Config)) 
-    %     || {Name, ConnRef, Config} <- ClientsConf ],
-
-    % Servers ++ Clients.
 
 -type child_conf() :: {atom(), {atom(), atom()}, #amqp_params_network{}, integer(), [{atom(), term()}]}
                     | {atom(), #amqp_params_network{}, [{atom(), term()}]}.
