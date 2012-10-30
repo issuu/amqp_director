@@ -63,9 +63,11 @@ is_component_type( {_Name, _ConnRef, _Conf}, clients ) -> true;
 is_component_type( _Component, _Type ) -> false.
 
 prepare_conf({Name, {Mod,Fun}, ConnRef, Count, Config}, Connections) ->
-    {Name, fun Mod:Fun/3, lists:keyfind(ConnRef, 1, Connections), Count, config(Config)};
+    {ConnRef, ConnInfo} = lists:keyfind(ConnRef, 1, Connections),
+    {Name, fun Mod:Fun/3, ConnInfo, Count, config(Config)};
 prepare_conf({Name, ConnRef, Config}, Connections) ->
-    {Name, lists:keyfind(ConnRef, 1, Connections), config(Config)}.
+    {ConnRef, ConnInfo} = lists:keyfind(ConnRef, 1, Connections),
+    {Name, ConnInfo, config(Config)}.
 
 config(Config) ->
     [ {K, setup_config(K, V)} || {K, V} <- Config ].
