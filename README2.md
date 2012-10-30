@@ -126,14 +126,14 @@ An example configuration for application `sample`:
         ...
         {amqp_director, [
           {connections, [
-            {default_conn, "localhost", undefined, <<"guest">>, <<"guest">>}, ...
+            {default_conn, [ {host, "my.amqp.com"}, {username, <<"some_user">>}, ... ]}, ...
           ]},
           {components, [
             {my_server, {my_server, handle},
              default_conn, 20, [
               {consume_queue, <<"my_server_queue">>},
               {queue_definitions,
-                [{'queue.declare', [{queue, <<"my_server_queue">>}, {auto_delete, true}]}]
+                [{'queue.declare', [{queue, <<"my_server_queue">>}, {auto_delete, true} ,...]}]
               }
              ]},
             {my_client,
@@ -176,8 +176,8 @@ them directly in your supervisor tree.
 Although a connection configuration can be used many times, each server/client gets its
 own connection. The sharing is only about the configuration.
 
-Elements in the `queue_definitions` configuration parameter list (for both server and client)
-have a special syntax:
+Elements in the `queue_definitions` parameter list (for both server and client) 
+and connection configuration have a special syntax:
 
     { record_name, [ {field_name, value}, ... ] }
 

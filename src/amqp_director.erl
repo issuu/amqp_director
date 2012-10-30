@@ -32,15 +32,9 @@ children_specs(App, Type) when is_atom(App) ->
     ConnectionsConf = proplists:get_value(connections, Config), % will fail if no connection is defined
     ComponentsConf = proplists:get_value(components, Config),   % will fail if no component is defined
 
-    Connections = lists:foldl(fun ({Name, Host,Port,User,Pwd}, D) ->
-        ConnInfo = #amqp_params_network{
-            username = User,
-            password = Pwd,
-            host     = Host,
-            port     = Port
-        },
-        dict:store(Name, ConnInfo, D)
-    end, dict:new(), ConnectionsConf),
+    Connections = lists:map(fun ({Name, Overrides}) ->
+        {Name, setup_amqp_record({amqp_params_network, Overrides})}
+    end, ConnectionsConf),
 
     [ child_spec( prepare_conf(ChildConf, Connections) ) || ChildConf <- ComponentsConf, is_component_type(ChildConf, Type) ].
 
@@ -69,9 +63,9 @@ is_component_type( {_Name, _ConnRef, _Conf}, clients ) -> true;
 is_component_type( _Component, _Type ) -> false.
 
 prepare_conf({Name, {Mod,Fun}, ConnRef, Count, Config}, Connections) ->
-    {Name, fun Mod:Fun/3, dict:fetch(ConnRef, Connections), Count, config(Config)};
+    {Name, fun Mod:Fun/3, lists:keyfind(ConnRef, 1, Connections), Count, config(Config)};
 prepare_conf({Name, ConnRef, Config}, Connections) ->
-    {Name, dict:fetch(ConnRef, Connections), config(Config)}.
+    {Name, lists:keyfind(ConnRef, 1, Connections), config(Config)}.
 
 config(Config) ->
     [ {K, setup_config(K, V)} || {K, V} <- Config ].
@@ -80,6 +74,9 @@ setup_config(queue_definitions, Records) ->
     [ setup_amqp_record(Record) || Record <- Records ];
 setup_config(_K, V) -> V. % we should't need to touch other things
 
+setup_amqp_record( {amqp_params_network, KV} ) ->
+    Fields = record_info(fields, amqp_params_network),
+    create_record(Fields, #amqp_params_network{}, KV);
 setup_amqp_record( {'queue.declare', KV} ) ->
     Fields = record_info(fields, 'queue.declare'),
     create_record(Fields, #'queue.declare'{}, KV);
