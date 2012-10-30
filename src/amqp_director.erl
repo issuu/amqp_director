@@ -62,9 +62,14 @@ is_component_type( {_Name, _ModFun, _ConnRef, _Count, _Conf}, servers ) -> true;
 is_component_type( {_Name, _ConnRef, _Conf}, clients ) -> true;
 is_component_type( _Component, _Type ) -> false.
 
+make_fun(Mod, Fun) ->
+    fun( Request, ContentType, MessageType ) ->
+        apply( Mod, Fun, [Request, ContentType, MessageType] )
+    end.
+
 prepare_conf({Name, {Mod,Fun}, ConnRef, Count, Config}, Connections) ->
     {ConnRef, ConnInfo} = lists:keyfind(ConnRef, 1, Connections),
-    {Name, fun Mod:Fun/3, ConnInfo, Count, config(Config)};
+    {Name, make_fun(Mod, Fun), ConnInfo, Count, config(Config)};
 prepare_conf({Name, ConnRef, Config}, Connections) ->
     {ConnRef, ConnInfo} = lists:keyfind(ConnRef, 1, Connections),
     {Name, ConnInfo, config(Config)}.
