@@ -31,7 +31,7 @@
 -behaviour(gen_server).
 
 -export([start_link/3]).
--export([cast/4, call/3, call/4]).
+-export([cast/4, call/3, call/4, call/5]).
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2, format_status/2]).
 
@@ -91,6 +91,20 @@ call(RpcClient, Payload, ContentType) ->
 call(RpcClient, Payload, ContentType, Timeout) ->
     gen_server:call(RpcClient, {call, Payload, ContentType}, Timeout).
 
+%% @doc Invokes an RPC. And also use a routing key to route the message.
+%% This variant is equivalent to @ref call/4 but it also allows the caller to
+%% specify a routing key to use when publishing a message.
+%% @end
+-spec call(RpcClient, Request, ContentType, RoutingKey, Timeout) -> Response
+  when RpcClient :: atom() | pid(),
+       Request :: binary(),
+       ContentType :: binary(),
+       Timeout :: pos_integer(),
+       RoutingKey :: binary(),
+       Response :: {ok, binary()} | {error, term()}.
+call(RpcClient, Payload, ContentType, RoutingKey, Timeout) ->
+    gen_server:call(RpcClient, {rk_call, Payload, ContentType, RoutingKey}, Timeout).
+
 %%--------------------------------------------------------------------------
 
 
@@ -122,11 +136,10 @@ setup_consumer(#state{channel = Channel, reply_queue = Q}) ->
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
 %% the next request
-publish(Payload, ContentType, {Pid, _Tag} = From,
+publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
         State = #state{channel = Channel,
                        reply_queue = Q,
                        exchange = X,
-                       routing_key = RoutingKey,
                        correlation_id = CorrelationId,
                        app_id = AppId,
                        monitors = Monitors,
@@ -145,9 +158,10 @@ publish(Payload, ContentType, {Pid, _Tag} = From,
                       #amqp_msg{props = Props,
                                 payload = Payload}),
     Ref = erlang:monitor(process, Pid),
-    State#state{correlation_id = CorrelationId + 1,
-                continuations = dict:store(CorrelationId, {From, Ref}, Continuations),
-                monitors = dict:store(Ref, CorrelationId, Monitors)}.
+    {ok,
+      State#state{correlation_id = CorrelationId + 1,
+                  continuations = dict:store(CorrelationId, {From, Ref}, Continuations),
+                  monitors = dict:store(Ref, CorrelationId, Monitors)}}.
 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, ContentType, Type,
@@ -188,13 +202,18 @@ handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 
 %% @private
-handle_call({call, _Payload, _ContentType}, _From, #state { channel = undefined } = State) ->
+handle_call(_Msg, _From, #state { channel = undefined } = State) ->
     {reply, {error, no_connection}, State};
-handle_call({call, _, _}, _From, #state { reply_queue = none } = State) ->
+handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
     {reply, {error, no_call_configuration}, State};
-handle_call({call, Payload, ContentType}, From, State) ->
-    NewState = publish(Payload, ContentType, From, State),
-    {noreply, NewState}.
+handle_call({call, Payload, ContentType}, From, #state { routing_key = RK} = State) ->
+    {ok, NewState} = publish(Payload, ContentType, From, RK, State),
+    {noreply, NewState};
+handle_call({rk_call, Payload, ContentType, RoutingKey}, From, State) ->
+    case publish(Payload, ContentType, From, RoutingKey, State) of
+      {ok, NewState} -> {noreply, NewState}
+    end.
+
 
 %% @private
 handle_cast({cast, _Payload, _ContentType, _Type}, #state { channel = undefined } = State) ->
