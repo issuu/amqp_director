@@ -210,9 +210,8 @@ handle_call({call, Payload, ContentType}, From, #state { routing_key = RK} = Sta
     {ok, NewState} = publish(Payload, ContentType, From, RK, State),
     {noreply, NewState};
 handle_call({rk_call, Payload, ContentType, RoutingKey}, From, State) ->
-    case publish(Payload, ContentType, From, RoutingKey, State) of
-      {ok, NewState} -> {noreply, NewState}
-    end.
+     {ok, NewState} = publish(Payload, ContentType, From, RoutingKey, State),
+     {noreply, NewState}.
 
 
 %% @private
