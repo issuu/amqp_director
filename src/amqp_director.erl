@@ -17,11 +17,13 @@ stop() ->
     [ application:stop(A) || A <- lists:reverse(dependent_apps())],
     ok.
 
--spec add_connection( atom(), #amqp_params_network{} ) -> {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
+-spec add_connection( atom(), #amqp_params_network{} ) ->
+      {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
 add_connection( Name, #amqp_params_network{} = AmqpConnInfo ) ->
     amqp_director_connection_sup:register_connection(Name, AmqpConnInfo).
 
--spec add_character( {module(), term()}, atom() ) ->  {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
+-spec add_character( {module(), term()}, atom() ) ->
+      {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
 add_character( CharacterModAndArgs, ConnName ) ->
     amqp_director_character_sup:register_character(CharacterModAndArgs, ConnName).
 
@@ -36,7 +38,8 @@ children_specs(App, Type) when is_atom(App) ->
         {Name, setup_amqp_record({amqp_params_network, Overrides})}
     end, ConnectionsConf),
 
-    [ child_spec( prepare_conf(ChildConf, Connections) ) || ChildConf <- ComponentsConf, is_component_type(ChildConf, Type) ].
+    [ child_spec( prepare_conf(ChildConf, Connections) )
+      || ChildConf <- ComponentsConf, is_component_type(ChildConf, Type) ].
 
 -type child_conf() :: {atom(), {atom(), atom()}, #amqp_params_network{}, integer(), [{atom(), term()}]}
                     | {atom(), #amqp_params_network{}, [{atom(), term()}]}.
@@ -46,13 +49,13 @@ child_spec( {Name, Fun, ConnInfo, ServersCount, Config} ) ->
     {Name, {
         amqp_server_sup, start_link,
         [ConnReg, ConnInfo, Config, Fun, ServersCount]
-    }, transient, infinity, supervisor, [amqp_server_sup]};
+    }, permanent, infinity, supervisor, [amqp_server_sup]};
 child_spec( {Name, ConnInfo, Config} ) ->
     ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
     {Name, {
         amqp_client_sup, start_link,
         [Name, ConnReg, ConnInfo, Config]
-    }, transient, infinity, supervisor, [amqp_client_sup]}.
+    }, permanent, infinity, supervisor, [amqp_client_sup]}.
 
 %%%
 %%% Internals

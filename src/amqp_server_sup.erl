@@ -31,5 +31,5 @@ init([RegName, ConnInfo, Config, Fun, Count]) ->
     Connection = {connection, {amqp_connection_mgr, start_link, [RegName, ConnInfo]},
                    permanent, 5000, worker, [amqp_connection_mgr]},
     ServerSup = {server_sup, {amqp_server_pool_sup, start_link, [RegName, Config, Fun, Count]},
-                   transient, infinity, supervisor, [amqp_server_pool_sup]},
+                   permanent, infinity, supervisor, [amqp_server_pool_sup]},
     {ok, { {one_for_all, 10, 3600}, [Connection, ServerSup]} }.
