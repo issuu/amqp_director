@@ -43,4 +43,4 @@ init([EndPoint, ConnReg, ConnInfo, ClientConfig]) ->
 	Client = {client, {amqp_rpc_client2, start_link, [EndPoint, ClientConfig , ConnReg]},
 	           permanent, 5000, worker, [amqp_rpc_client2]},
 	%% 10 times in an hour is the current death rate which is allowed.
-    {ok, { {one_for_all, 10, 3600}, [Connection, Client]} }.
+    {ok, { {one_for_all, 5, 3600}, [Connection, Client]} }.
