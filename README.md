@@ -1,173 +1,185 @@
-# AMQP Director: easily integrate AMQP into your Erlang apps
+# AMQP Director
+## A simplistic embeddable RPC Client/Server library for AMQP/RabbitMQ.
 
-The aim of this library is to make it easy to integrate AMQP in Erlang applications.
-It builds on top of amqp_client (https://github.com/jbrisbin/amqp_client).
+AMQP director implements two very common patterns for AMQP/RabbitMQ in a robust way.
 
-## Goals
+First, it implements a server-pattern: Messages are consumed from a queue `QIn`.
+They are fed through a function `F` and then the result is posted on a result queue
+`QOut` as determined by the message. The server pattern essentially turns an Erlang
+function into a processor of AMQP messages. To get scalability and concurrency a static pool of
+function workers are kept around to handle multiple incoming messages.
 
-Supports multiple connections: Amqp characters can share a single amqp_connection, or start a new one.
-In all cases, each character is provided with its own `amqp_channel`.
+Second, the library implements a typical RPC client pattern: A process `P` wants to call an RPC
+service. It then issues an OTP `call` to a client gen_server and thus blocks until there is a
+response, or the call times out. The semantics have been kept as much as possible to reflect
+that of a typical `gen_server` in Erlang. The `gen_server` maintaining the AMQP messaging does
+not block, so we have experienced message rates of 8000 reqs/s on a single queue with a single
+`gen_server` easily.
 
-Reconnect: if a connection fails, it will try its best to reconnect to the server
-(with some notion of "best").
+Third, the library provides two other common patterns: for the server, it allows for non-response
+operation. That is, you consume messages off of a queue, but you don't provide a response back.
+For the client, the library supports fire'n'forget messages where you just send a message and
+don't care about it anymore.
 
-Each character must provide an initialization function that accepts the `amqp_channel`.
-If the character needs to subscribe to some queue, it needs to provide a callback function
-for that purpose.
+## Usage:
 
-A bit of semantics:
- - should an `amqp_connection` fail, all linked characters are killed too
- - should a character fail, the `amqp_connection` it refers to is signaled,
-   the character is removed from the list of linked characters
-   and its channel is removed.
+The library exposes two supervisors, intended for embedding into another supervisor tree of your
+choice, so the link becomes part of your application. Suppose we have:
 
- - when publishing an AMQP message through an `amqp_director_character`,
-   the result is either `ok` or `{error, Reason}`: it is responsibility
-   of the caller to queue undelivered messages.
+	ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
+		                              host = "localhost", port = 5672 },
+    QArgs = [{<<"x-message-ttl">>, long, 30000},
+             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+    Config =
+       [{reply_queue, undefined},
+        {routing_key, <<"test_queue">>},
+        % {consumer_tag, <<>>}, % This is the default
+        % {exchange, <<>>}, % This is the default
+        {consume_queue, <<"test_queue">>},
+        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
+                                                arguments = QArgs }]}],
 
-## Usage
+`ConnInfo` is a local AMQP connection. The `Config` is a configuration suitable for
+both a client and a server.
 
-Refer to the `example` directory for sample code.
+* The key `reply_queue` tells us if there should be an explicitly named reply queue.
+  the default is just to create one randomly.
+* The key `routing_key` tells the client part where to route outgoing messages.
+* The key `consumer_tag` is optional and tells what consumer tag to set.
+* The key `exchange` is optional and tells what exchange to set. It can be set as a
+  topic exchange for instance so one can route messages by topic.
+* The key `consume_queue` tells the server to consume from this queue. It is an error
+  to try running a server without a queue to consume on.
+* Finally, `queue_definitions` is a list of queue definitions to inject into the AMQP
+  system. Currently we only support `#'queue.declare'{}` and `#'queue.bind'{}` but it
+  can rather easily be extended.
 
-### Publishing Amqp messages through `amqp_director_character`
+Now we can define a server:
+			                                  
+	{ok, SPid} = amqp_server_sup:start_link(
+	    server_connection_mgr, ConnInfo, Config, F, 5),
 
-To publish a message, use the function
+This gives us back a supervisor tree where we have a queue `<<"test_queue">>`, configured
+with a time out and a dead-letter support (see the `Config` binding above). We have defined that
+the function identified by `F` should be run upon message consumption and that we want 5 static
+workers. F could look like
 
-    amqp_director_character:publish( character_ref(), {#'basic.publish'{}, #amqp_msg{}} ) -> ok | {error, Reason}
+	-spec f(Msg, ContentType, Type) -> {reply, binary(), binary()} | ack | reject | reject_no_requeue
+	  when
+	    Msg :: binary(),
+	    ContentType :: binary(),
+	    Type :: binary().
+	f(<<"Hello.">>, _ContentType, _Type) ->
+	    {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
 
-The message will be published using the channel of the referenced character. A character reference can either be the name or the gen_serve PID.
-If something goes wrong (e.g. the connection has not been established yet), the function will return `{error, Reason}`.
-It is responsibility of the caller to react accordingly.
+which will just consume any message and produce an "ok." response. Note the other return possibilities.
+You can `ack` the message if you don't want to reply with anything. You can `reject` the message which
+means it will be requeued again for someone else to consume. You can also `reject_no_requeue` if you
+want to reject the request and not have it requeued. The semantics then depend on dead-lettering of the
+AMQP queue.
 
-### `amqp_director_character` callbacks
+A client tree can be started with the following piece of code
 
-`amqp_director_character` defines a behaviour, and its callbacks must be implemented:
-
- - `init( Amqp_channel, term() ) -> {ok, term()}`: initialize the character. Returns the character state.
- - `terminate( Reason, State ) -> Ignored`: gives the character a chance to clean up resources when terminating.
- - `handle( { #'basic.deliver'{}, #amqp_msg{} }, State, Amqp_channel, CharPid ) -> {ok, NewState} | ok`: handle the
-   reception of a message. Can optionally return a new character state. WARNING: the state will be asynchronously
-   updated, as the `handle` callback is called in a separate process.
- - `handle_publish( {{ #'basic.deliver'{}, #amqp_msg{} }, Args}, From, State ) -> {ok, term()} | ok`: when
-    publishing, the character state can be updated. `Args` are the optional arguments passed to
-    `amqp_director_character:publish` function.
- - `handle_failure( { #'basic.deliver'{}, #amqp_msg{} }, State, Channel, CharPid ) -> Ignored`:
-   should the handling of a message fail, this callback will be called. Useful for, e.g., `nack` Amqp or
-   stats collection.
- - `publish_hook( pre, { #'basic.deliver'{}, #amqp_msg{} } ) -> { #'basic.deliver'{}, #amqp_msg{} }`:
-   callback called prior to sending messages. Useful for, e.g., marshalling or message validation.
- - `deliver_hook( pre|post, { #'basic.deliver'{}, #amqp_msg{} } ) -> { #'basic.deliver'{}, #amqp_msg{} }`:
-   callback called `pre` or `post` the delivery of a message.
-   Useful for, e.g., marshalling, messsage validation or to `ack` Amqp.
-
-
-### Adding connections and characters, the code way
-
-Use
-
-    amqp_director:add_connection( connection_name(), #amqp_params_network{} )
-
-to register a connection (where `connection_name() :: atom()`).
-Once at least a connection has been registered, it is possible to register characters using
-the function 
-
-    amqp_director:add_character( {character_name(), module(), term()}, connection_name() )
-
-where the first parameter is a tuple with a character name (where `character_name() :: atom()`), module and module parameters (the latter will be passed to the `init` callback).
-
-### Adding connections and characters, the configuration way
-
-Set the environment variables `connections` and `characters` of the `amqp_director` application.
-Both are list, here is an example:
-
-    {connections, [ {conn_1, [{host,"localhost"}]}, {conn_2, [{username, "myuser"}, {host, "amqp.issuu.com"}]} ]}
-    {characters, [
-        {my_module_1, conn_1}, //character_name == module name, character args = undefined
-        { {my_module_2, ["some",params]}, conn_1},
-        { {another_2, my_module_2, ["other", params]}, conn_2} ]}
-
-Each connection tuple has the connection name and a `proplist` that (as of ver.0.0.1) can specify the `host`, `port`,
-`username` and `password` fields.
-
-Each character tuple has the module name and arguments, and the connection identifier.
-
-## Limitations
-
-While it is easy to use the same connection for multiple characters, it is hard to use the same character with 
-multiple connections.
-
-## I was joking, here is a complete code example:
-
-An `example_start` module could look like:
-
-    -module(example_start).
-    -compile(export_all).
-    -include_lib("amqp_client/include/amqp_client.hrl").
-
-    start() ->
-        ok = application:start( amqp_client ),
-        ok = application:start( amqp_director ),
-
-        amqp_director:add_connection( myconn, #amqp_params_network{} ),
-        amqp_director:add_character( {mychar1, mycharacter, [my, beautiful, 5]}, myconn ),
-        amqp_director:add_character( {mychar2, mycharacter, [my, beautiful, 2]}, myconn ),
-
-        %here you can send messages and bla bla
-        amqp_director_character:publish( mychar1, { #'basic.publish'{ routing_key = "somekey" }, #amqp_msg{ payload = <<"foo">> } } ),
-        ...
-
-
-And the `mycharacter` module:
-
-    -module(mycharacter).
-    -behaviour (amqp_director_character).
-
-    -include_lib("amqp_client/include/amqp_client.hrl").
-
-    -export ([init/2, handle/4, handle_publish/3, handle_failure/4, terminate/2, publish_hook/2, deliver_hook/3]).
-
-    queue() -> <<"my_bautiful_queue">>.
-
-    init( Chan, [my, beautiful, Args] ) ->
-        io:format("initializing module~n", []),
-        BindKey = queue(),
-
-        QDecl = #'queue.declare'{ queue = BindKey },
-        #'queue.declare_ok'{
-            queue = Queue
-        } = amqp_channel:call(Chan, QDecl),
-
-        io:format("Queue declared: ~p~n", [Queue]),
-
-        BasicConsume = #'basic.consume'{ queue = BindKey },
-        #'basic.consume_ok'{ consumer_tag = Tag } = amqp_channel:subscribe(Chan, BasicConsume, self()),
-        {ok, Tag}. 
-
-    handle( {#'basic.deliver'{ delivery_tag = DTag, consumer_tag = Tag }, #amqp_msg{ payload = Payload }}, Tag, Chan, CharRef ) ->
-        io:format("Received: ~p~n", [binary_to_term(Payload)]),
-        amqp_channel:cast(Chan, #'basic.ack'{delivery_tag = DTag}),
-        % example reply
-        amqp_director_character:publish( CharRef, { #'basic.publish'{}, #amqp_msg{ payload = <<"helo">> } } ),
-        %
-        ok.
     
-    handle_publish( _Msg, _From, _State ) ->
-        ok.
-    handle_failure( {#'basic.deliver'{delivery_tag = DeliverTag}, _}, _State, Channel, CharRef ) ->
-        io:format("Uops, someting went wrong! Let's nack the message~n", []),
-        amqp_channel:cast(Channel, #'basic.nack'{delivery_tag = DeliverTag}),
-        ok.
+	{ok, CPid} = amqp_client_sup:start_link(
+	    client_connection, client_connection_mgr, ConnInfo, Config),
 
-    terminate(Reason, State) ->
-        io:format("Quitting because of: ~p~nWhen in state:~p~n", [Reason,State]).
+which will start up a client, registered on the name `client_connection`. The `client_connection_mgr`
+is the registered name of the connection manager process so you can alter that to your liking. The
+`<<"test_queue">>` is a `RoutingKey` which tells AMQP where to route the message (what exchange to hit,
+normally).
 
-    publish_hook( _Signal, Msg ) ->
-        Msg.
-    deliver_hook( _Signal, Msg, _Channel ) ->
-        Msg.
+To use the newly spawned client, you issue a call with a payload and a content type (The type will
+automatically be set to `<<"request">>`:
+
+	{ok, Reply, ReplyContentType} =
+	  amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
+
+Or is you don't want to wait for the response, you supply a payload, a content type, and finally
+a "type" which says what kind of message this is:
+
+	amqp_rpc_client2:cast(client_connection, <<"Hello">>, <<"application/x-erlang-term">>, <<"event">>),
+
+Note that the current semantics are such that if the queue is down, then the
+message is not going to be delivered to the queue. It will be black-holed instead.
+This can happen if the connection to AMQP is lost and we are sitting in a reconnect
+loop waiting for the connection to come back up. Then the server acts like as if
+a cast without a pid().
+
+## Configuration facilities
+
+Besides manually configuring amqp rpc clients and servers, the library provides a way to embed
+these information in an application configuration file.
+
+This facility is provided in the form of a function that returns a list of `supervisor:child_spec()`,
+which can then be added to a supervisor tree.
+
+The function `amqp_director:children_specs/2` expect as parameter an application name, where 
+the environment configuration variable `amqp_director` must defined, and a component type, which
+can be one of `servers`, `clients` or `all`.
+
+An example configuration for application `sample`:
+
+    {application, sample, [
+      ...
+      {env, [
+        ...
+        {amqp_director, [
+          {connections, [
+            {default_conn, [ {host, "my.amqp.com"}, {username, <<"some_user">>}, ... ]}, ...
+          ]},
+          {components, [
+            {my_server, {my_server, handle},
+             default_conn, 20, [
+              {consume_queue, <<"my_server_queue">>},
+              {queue_definitions,
+                [{'queue.declare', [{queue, <<"my_server_queue">>}, {auto_delete, true} ,...]}]
+              }
+             ]},
+            {my_client,
+             default_conn, [
+              {reply_queue, undefined},
+              {routing_key, <<"some_route">>},
+              {queue_definitions,
+                [{'queue.declare', [{queue, <<"some_route">>}]}]
+              }
+            ]}, ...]}
+          ]}
+        ]}
+      ]}
+    ]}
+
+Assuming that the `sample` application has a main `sample_sup` supervisor,
+the amqp children specs are loaded calling `amqp_director:children_specs(sample, ChildType)`.
+The usual case is that `clients` need to be started before the components that use them,
+while `servers` should be started after the components that need to be used by the handling functions,
+so the `sample` supervisor should look like the following code:
+
+    -module (sample_sup).
+    -behaviour (supervisor).
+    ...
+    init( Args ) ->
+      ...
+      AmqpClientsSpecs = amqp_director:children_specs(sample, clients),
+      AmqpServersSpecs = amqp_director:children_specs(sample, servers),
+      ...
+      OtherChildren = [MyGenserver1,...],
+      {ok, { {RestartStrategy, MaxRestarts, MaxSecsBtwRestarts},
+       AmqpClientsSpecs ++ OtherChildren ++ AmqpServersSpecs }}.
 
 
+### Considerations
 
+If you have one or two amqp rpc servers/clients, then it is probably easier just to link
+them directly in your supervisor tree.
 
+Although a connection configuration can be used many times, each server/client gets its
+own connection. The sharing is only about the configuration.
 
+Elements in the `queue_definitions` parameter list (for both server and client) 
+and connection configuration have a special syntax:
 
+    { record_name, [ {field_name, value}, ... ] }
+
+A `record_name` instance is created (e.g. `#'queue.declare{}`), and for each defined `field_name` the `value`
+overrides the default record value (e.g. `{queue, <<"some_queue">>} ==> R#'queue.declare'{ queue = <<"some_queue">> }`).
