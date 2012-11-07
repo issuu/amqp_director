@@ -167,10 +167,11 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
 publish_cast(Payload, ContentType, Type,
              #state { channel = Channel,
                       exchange = X,
-                      routing_key = RoutingKey }) ->
+                      routing_key = RoutingKey,
+                      app_id = AppId }) ->
     Props = #'P_basic'{content_type = ContentType,
                        type = Type,
-                       app_id = list_to_binary(atom_to_list(node()))},
+                       app_id = AppId},
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
                                mandatory = true},
@@ -309,4 +310,3 @@ try_connect(Configuration, ConnectionRef, ReconnectTime) ->
                                                               min(ReconnectTime * 2, ?MAX_RECONNECT)}),
           #state { channel = undefined }
       end.
-
