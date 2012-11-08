@@ -43,7 +43,7 @@ parse_connection_parameters(Props) ->
          || E <- [host, port, username, password]] of
     [Host, Port, Username, Password]
       when is_list(Host),
-           is_integer(Port),
+           Port == undefined orelse is_integer(Port),
            is_binary(Username),
            is_binary(Password) ->
        #amqp_params_network { username = Username, password = Password,
