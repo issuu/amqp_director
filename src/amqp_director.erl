@@ -4,7 +4,8 @@
 
 -export ([start/0, stop/0]).
 -export ([children_specs/2]).
--export ([child_spec/1]).
+-export ([parse_connection_parameters/1]).
+-export ([child_spec/1, server_child_spec/5, client_child_spec/3]).
 -export ([add_connection/2, add_character/2]).
 
 start() ->
@@ -27,6 +28,30 @@ add_connection( Name, #amqp_params_network{} = AmqpConnInfo ) ->
 add_character( CharacterModAndArgs, ConnName ) ->
     amqp_director_character_sup:register_character(CharacterModAndArgs, ConnName).
 
+server_child_spec(Name, Fun, ConnInfo, ServersCount, Config) ->
+	ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
+    {Name, {amqp_server_sup, start_link, [ConnReg, ConnInfo, Config, Fun, ServersCount]},
+     permanent, infinity, supervisor, [amqp_server_sup]}.
+     
+client_child_spec(Name, ConnInfo, Config) ->
+	ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
+    {Name, {amqp_client_sup, start_link, [Name, ConnReg, ConnInfo, Config]},
+     permanent, infinity, supervisor, [amqp_client_sup]}.
+
+parse_connection_parameters(Props) ->
+  case [proplists:get_value(E, Props)
+         || E <- [host, port, username, password]] of
+    [Host, Port, Username, Password]
+      when is_list(Host),
+           is_integer(Port),
+           is_binary(Username),
+           is_binary(Password) ->
+       #amqp_params_network { username = Username, password = Password,
+                              host = Host, port = Port };
+    _Otherwise ->
+      exit({error, parse_connection_parameters})
+  end.
+
 -type children_type() :: servers | clients | all.
 -spec children_specs(atom(), children_type()) -> [ supervisor:child_spec() ].
 children_specs(App, Type) when is_atom(App) ->
@@ -41,21 +66,14 @@ children_specs(App, Type) when is_atom(App) ->
     [ child_spec( prepare_conf(ChildConf, Connections) )
       || ChildConf <- ComponentsConf, is_component_type(ChildConf, Type) ].
 
+
 -type child_conf() :: {atom(), {atom(), atom()}, #amqp_params_network{}, integer(), [{atom(), term()}]}
                     | {atom(), #amqp_params_network{}, [{atom(), term()}]}.
 -spec child_spec( child_conf() ) -> supervisor:child_spec().
 child_spec( {Name, Fun, ConnInfo, ServersCount, Config} ) ->
-    ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
-    {Name, {
-        amqp_server_sup, start_link,
-        [ConnReg, ConnInfo, Config, Fun, ServersCount]
-    }, permanent, infinity, supervisor, [amqp_server_sup]};
+    server_child_spec(Name, Fun, ConnInfo, ServersCount, Config);
 child_spec( {Name, ConnInfo, Config} ) ->
-    ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
-    {Name, {
-        amqp_client_sup, start_link,
-        [Name, ConnReg, ConnInfo, Config]
-    }, permanent, infinity, supervisor, [amqp_client_sup]}.
+    client_child_spec(Name, ConnInfo, Config).
 
 %%%
 %%% Internals
