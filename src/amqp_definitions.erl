@@ -11,4 +11,7 @@ inject(Channel, [#'queue.declare' { queue = Q} = QDec | Defns]) ->
     inject(Channel, Defns);
 inject(Channel, [#'queue.bind' {} = BindDec | Defns]) ->
     #'queue.bind_ok' {} = amqp_channel:call(Channel, BindDec),
-    inject(Channel, Defns).
+    inject(Channel, Defns);
+inject(Channel, [#'exchange.declare'{} = ExchDec | Defns]) ->
+	#'exchange.declare_ok' {} = amqp_channel:call(Channel, ExchDec),
+	inject(Channel, Defns).
