@@ -115,15 +115,17 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
                              proplists:get_value(queue_definitions, Configuration, [])),
 
     %% Configuration of the Reply queue:
+    RQ = #'queue.declare' { exclusive = true, auto_delete = true },
     case proplists:get_value(reply_queue, Configuration) of
       undefined ->
           % Set up an no-name reply queue
-          #'queue.declare_ok'{queue = ReplyQ} = amqp_channel:call(Channel, #'queue.declare'{});
+          #'queue.declare_ok'{queue = ReplyQ} = amqp_channel:call(Channel, RQ);
       none ->
           % No reply queue wanted, do not set up one. Calls won't work.
           ReplyQ = none;
       ReplyQ ->
-          #'queue.declare_ok' { queue = ReplyQ } = amqp_channel:call(Channel, #'queue.declare'{ queue = ReplyQ })
+          #'queue.declare_ok' { queue = ReplyQ } = amqp_channel:call(Channel,
+                                                                     RQ#'queue.declare'{ queue = ReplyQ })
     end,
     State#state{reply_queue = ReplyQ}.
 
