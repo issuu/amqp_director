@@ -133,7 +133,8 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
 setup_consumer(#state{channel = _Channel, reply_queue = none}) ->
     ok;
 setup_consumer(#state{channel = Channel, reply_queue = Q}) ->
-    amqp_channel:call(Channel, #'basic.consume'{queue = Q}).
+    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
+    amqp_channel:register_return_handler(Channel, self()).
 
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
@@ -155,10 +156,9 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                        reply_to = Q},
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
-                               mandatory = true},
-    amqp_channel:call(Channel, Publish,
-                      #amqp_msg{props = Props,
-                                payload = Payload}),
+                               mandatory = true,
+                               immediate = true },
+    ok = amqp_channel:call(Channel, Publish, #amqp_msg{props = Props, payload = Payload}),
     Ref = erlang:monitor(process, Pid),
     {ok,
       State#state{correlation_id = CorrelationId + 1,
@@ -256,6 +256,20 @@ handle_info(#'basic.cancel'{}, State) ->
     {stop, amqp_server_cancelled, State};
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
+handle_info({#'basic.return' { reply_code = ReplyCode },
+             #amqp_msg { props = #'P_basic' { correlation_id = <<Id:64>> }} },
+            #state { continuations = Conts,
+                     monitors = Monitors } = State) ->
+    case dict:find(Id, Conts) of
+        error ->
+            %% Stray message. If the client has timed out, this can happen
+            {noreply, State};
+        {ok, {From, MonitorRef}} ->
+            erlang:demonitor(MonitorRef),
+            gen_server:reply(From, handle_reply_code(ReplyCode)),
+            {noreply, State#state { continuations = dict:erase(Id, Conts),
+                                    monitors = dict:erase(MonitorRef, Monitors) }}
+    end;
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
             #amqp_msg{props = #'P_basic'{correlation_id = <<Id:64>>,
                                          content_type = ContentType},
@@ -293,6 +307,9 @@ format_status(_, [_Pdict, #state { continuations = Conts,
      
 %%--------------------------------------------------------------------------
     
+handle_reply_code(313) -> {error, no_consumers};
+handle_reply_code(N) when is_integer(N) -> {error, {reply_code, N}}.
+
 try_connect(Configuration, ConnectionRef, ReconnectTime) ->
 	case amqp_connection_mgr:fetch(ConnectionRef) of
 	    {ok, Connection} ->

@@ -40,7 +40,7 @@ t_start() ->
          server_connection_mgr, ConnInfo, Config, fun f/3, 5),
     {ok, CPid} = amqp_client_sup:start_link(client_connection,
                                              client_connection_mgr, ConnInfo, Config),
-     {ok, SPid, CPid}.
+    {ok, SPid, CPid}.
 
 
 t() ->
@@ -61,6 +61,9 @@ do_work(Parent, N) ->
 
 do_work_(0) -> ok;
 do_work_(N) ->
-    {ok, <<"ok.">>, _} = amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>),
+    case amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>) of
+        {ok, <<"ok.">>, _} -> ok;
+        {error, no_consumers} -> error_logger:info_report([no_consumers]), ok
+    end,
     do_work_(N-1).
 
