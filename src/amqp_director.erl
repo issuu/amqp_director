@@ -7,6 +7,7 @@
 -export ([parse_connection_parameters/1]).
 -export ([child_spec/1, server_child_spec/5, client_child_spec/3]).
 -export ([add_connection/2, add_character/2]).
+-export([mk_app_id/1]).
 
 start() ->
     application:load( amqp_director ),
@@ -17,6 +18,13 @@ stop() ->
     application:stop( amqp_director ),
     [ application:stop(A) || A <- lists:reverse(dependent_apps())],
     ok.
+
+%% @doc Construct an application Id for this node based on a RegName atom
+%% @end
+mk_app_id(RegName) when is_atom(RegName) ->
+  Hostname = string:strip(os:cmd("/bin/hostname"), right, $\n),
+  iolist_to_binary(
+    [Hostname, $-, atom_to_list(node()), $-, $-, atom_to_list(RegName)]).
 
 -spec add_connection( atom(), #amqp_params_network{} ) ->
       {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
