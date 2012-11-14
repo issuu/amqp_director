@@ -24,7 +24,7 @@ stop() ->
 mk_app_id(RegName) when is_atom(RegName) ->
   Hostname = string:strip(os:cmd("/bin/hostname"), right, $\n),
   iolist_to_binary(
-    [Hostname, $-, atom_to_list(node()), $-, $-, atom_to_list(RegName)]).
+    [Hostname, $., atom_to_list(node()), $., atom_to_list(RegName)]).
 
 -spec add_connection( atom(), #amqp_params_network{} ) ->
       {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
