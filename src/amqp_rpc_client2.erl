@@ -133,8 +133,8 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
 setup_consumer(#state{channel = _Channel, reply_queue = none}) ->
     ok;
 setup_consumer(#state{channel = Channel, reply_queue = Q}) ->
-    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}),
-    amqp_channel:register_return_handler(Channel, self()).
+    amqp_channel:register_return_handler(Channel, self()),
+    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}).
 
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
