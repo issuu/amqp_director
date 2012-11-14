@@ -6,3 +6,4 @@ scrap
 *.o
 *.beam
 *.plt
+test_logs

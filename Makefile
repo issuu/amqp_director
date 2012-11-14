@@ -1,5 +1,7 @@
 REPO=amqp_director
 
+.PHONY: all deps compile-deps compile clean console test check_plt clean_plt build_plt dialyzer
+
 all: deps compile-deps
 
 deps:
@@ -18,6 +20,12 @@ clean:
 console:
 	erlc -I deps test/t.erl
 	erl -boot start_sasl -pa ebin deps/*/ebin
+
+test:
+	mkdir -p test_logs
+	ct_run -pa deps/*/ebin ebin -spec test-local.spec \
+	 -label local \
+	 -ct_hooks cth_surefire '[{path,"common_test_report.xml"}]'
 
 ## Dialyzer stuff follows
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
