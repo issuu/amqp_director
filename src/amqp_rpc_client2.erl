@@ -204,7 +204,7 @@ init([Configuration, ConnectionRef]) ->
 terminate(_Reason, #state { channel = undefined }) ->
 	ok;
 terminate(_Reason, #state{channel = Channel}) ->
-    amqp_channel:close(Channel),
+    catch amqp_channel:close(Channel),
     ok.
 
 %% Handle the application initiated stop by just stopping this gen server
