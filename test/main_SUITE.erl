@@ -96,9 +96,11 @@ immediate_failure_test(_Config) ->
                                       host = Host, port = Port },
     QArgs = [{<<"x-message-ttl">>, long, 30000},
              {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+    AppId = amqp_director:mk_app_id(client_connection),
     QConf =
-       [{reply_queue, undefined},
+       [{reply_queue, <<"replyq-", AppId/binary>>},
         {consumer_tag, <<"my.consumer">>},
+        {app_id, AppId},
         {routing_key, <<"test_queue">>},
         % {exchange, <<>>}, % This is the default
         {consume_queue, <<"test_queue">>},

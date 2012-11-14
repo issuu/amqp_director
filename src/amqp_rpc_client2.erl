@@ -116,16 +116,16 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
 
     %% Configuration of the Reply queue:
     RQ = #'queue.declare' { exclusive = true, auto_delete = true },
-    case proplists:get_value(reply_queue, Configuration) of
+    case proplists:get_value(reply_queue, Configuration, undefined) of
       undefined ->
           % Set up an no-name reply queue
           #'queue.declare_ok'{queue = ReplyQ} = amqp_channel:call(Channel, RQ);
       none ->
           % No reply queue wanted, do not set up one. Calls won't work.
           ReplyQ = none;
-      ReplyQ ->
-          #'queue.declare_ok' { queue = ReplyQ } = amqp_channel:call(Channel,
-                                                                     RQ#'queue.declare'{ queue = ReplyQ })
+      ReplyQ when is_binary(ReplyQ) ->
+          Q = RQ#'queue.declare'{ queue = ReplyQ },
+          #'queue.declare_ok' { queue = ReplyQ } = amqp_channel:call(Channel, Q)
     end,
     State#state{reply_queue = ReplyQ}.
 
