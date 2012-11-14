@@ -154,6 +154,14 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                        type = <<"request">>,
                        app_id = AppId,
                        reply_to = Q},
+    %% Set Message options:
+    %% Setting mandatory means that there must be a routable target queue
+    %%  through the exchange. If no such queue exist, an error is returned out
+    %%  of band and processed by the return handler.
+    %% Setting immediate means that the routable target queue MUST
+    %%  have a consumer on it currently. Otherwise routing a message to that
+    %%  queue is also an error. For RPC we expect there to be a handler currently
+    %%  connected. If not we rather handle the error quickly.
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
                                mandatory = true,
