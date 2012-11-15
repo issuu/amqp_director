@@ -1,6 +1,7 @@
 REPO=amqp_director
 
-.PHONY: all deps compile-deps compile clean console test check_plt clean_plt build_plt dialyzer
+.PHONY: all deps compile-deps compile clean console test check_plt clean_plt build_plt dialyzer \
+	common_test
 
 all: deps compile-deps
 
@@ -21,7 +22,9 @@ console:
 	erlc -I deps test/t.erl
 	erl -boot start_sasl -pa ebin deps/*/ebin
 
-test:
+test: compile-deps compile common-test
+
+common-test:
 	mkdir -p test_logs
 	ct_run -pa deps/*/ebin ebin -spec test-local.spec \
 	 -label local \
