@@ -285,6 +285,8 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
            State = #state{ continuations = Conts,
                            monitors = Monitors,
                            channel = Channel }) ->
+    %% Always Ack the response messages, before processing
+    amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
     case dict:find(Id, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
@@ -292,7 +294,6 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         {ok, {From, MonitorRef}} ->
              erlang:demonitor(MonitorRef),
              gen_server:reply(From, {ok, Payload, ContentType}),
-             amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
              {noreply, State#state{ continuations = dict:erase(Id, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end.
