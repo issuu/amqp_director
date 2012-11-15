@@ -6,7 +6,8 @@
          init_per_testcase/2, end_per_testcase/2
         ]).
 
--export([connectivity_test/1,
+-export([blind_cast_test/1,
+         connectivity_test/1,
          immediate_failure_test/1]).
          
 -include_lib("common_test/include/ct.hrl").
@@ -22,12 +23,14 @@ suite() ->
 
 -spec groups() -> proplists:proplist().
 groups() ->
-    [{integration_test_group, [], [connectivity_test, immediate_failure_test]}].
+    [{integration_test_group, [],
+        [connectivity_test,
+         immediate_failure_test,
+         blind_cast_test]}].
 
 -spec all() -> proplists:proplist().
 all() ->
-    [
-     {group, integration_test_group}].
+    [{group, integration_test_group}].
 
 -spec init_per_group(atom(), proplists:proplist()) -> proplists:proplist().
 init_per_group(_, Config) ->
@@ -89,6 +92,43 @@ do_connectivity_work(N) ->
   end,
   do_connectivity_work(N-1).
   
+blind_cast_test(_Config) ->
+    %% Spawn
+    %% Spawn a RabbitMQ server system:
+	{Host, Port, UN, PW} = ct:get_config(amqp_host),
+	ConnInfo = #amqp_params_network { username = UN, password = PW,
+                                      host = Host, port = Port },
+    QArgs = [{<<"x-message-ttl">>, long, 30000},
+             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+    AppId = amqp_director:mk_app_id(client_connection_cast),
+    QConf =
+       [{reply_queue, none},
+        {app_id, AppId},
+        {routing_key, <<"test_queue">>},
+        {exchange, <<"amq.topic">>},
+        {queue_definitions, [#'queue.declare' { queue = <<"rk_test_queue">> },
+                             #'queue.bind' { queue = <<"rk_test_queue">>, exchange = <<"amq.topic">>,
+                                             routing_key = <<"rk.*">> } ]}],
+    {ok, CPid} = amqp_client_sup:start_link(client_connection_cast,
+                                            client_connection_cast_mgr, ConnInfo, QConf),
+    
+    %% Set up a consumer hole
+    TesterPid = self(),
+    F = fun(Msg, CType, Type) ->
+          TesterPid ! {msg, Msg, CType, Type},
+          ack
+        end,
+    {ok, _SPid} = amqp_server_sup:start_link(
+         server_connection_mgr, ConnInfo, [{consume_queue, <<"rk_test_queue">>}], F, 1),
+    timer:sleep(timer:seconds(1)), %% Allow the system to connect
+	amqp_rpc_client2:cast(client_connection_cast, <<"Fire!">>, <<"text/plain">>, <<"event">>),
+	amqp_rpc_client2:cast(client_connection_cast, <<"1">>, <<"text/plain">>, <<"event">>, <<"rk.a">>),
+	amqp_rpc_client2:cast(client_connection_cast, <<"2">>, <<"text/plain">>, <<"event">>, <<"rk.b">>),
+	
+	receive {msg, <<"1">>, _, _} -> ok after 1000 -> ct:fail("Incorrect Receive") end,
+	receive {msg, <<"2">>, _, _} -> ok after 1000 -> ct:fail("Incorrect Receive") end,
+	ok.
+
 immediate_failure_test(_Config) ->
 	%% Spawn a RabbitMQ server system:
 	{Host, Port, UN, PW} = ct:get_config(amqp_host),
