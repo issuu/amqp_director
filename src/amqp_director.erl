@@ -23,8 +23,12 @@ stop() ->
 %% @end
 mk_app_id(RegName) when is_atom(RegName) ->
   Hostname = string:strip(os:cmd("/bin/hostname"), right, $\n),
+  Creation = erlang:system_info(creation),
+  {Mega, S, _} = os:timestamp(),
   iolist_to_binary(
-    [Hostname, $., atom_to_list(node()), $., atom_to_list(RegName)]).
+    [Hostname, $., atom_to_list(node()), $.,
+     integer_to_list(Creation), $.
+     integer_to_list(Mega * 1000000 + S), atom_to_list(RegName)]).
 
 -spec add_connection( atom(), #amqp_params_network{} ) ->
       {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
