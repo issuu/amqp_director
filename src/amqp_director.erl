@@ -26,7 +26,7 @@ mk_app_id(RegName) when is_atom(RegName) ->
   Creation = erlang:system_info(creation),
   {Mega, S, _} = os:timestamp(),
   iolist_to_binary(
-    [Hostname, $., atom_to_list(node()), $.,
+    [Hostname, $-, atom_to_list(node()), $-,
      integer_to_list(Creation), $.,
      integer_to_list(Mega * 1000000 + S), $., atom_to_list(RegName)]).
 
