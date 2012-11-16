@@ -114,6 +114,9 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
         {noreply, State}
     end;
+handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
+    error_logger:info_msg("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
+    {noreply, State};
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
     error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
 	{stop, Reason, State#state{ channel = undefined }}.
@@ -159,6 +162,7 @@ connect(ConnectionRef, Config, Fun) ->
                           Connection, {amqp_direct_consumer, [self()]}) of
             {ok, Channel} ->
               erlang:monitor(process, Channel),
+              amqp_channel:register_return_handler(Channel, self()),
               ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
               case proplists:get_value(consume_queue, Config, undefined) of
                   undefined -> exit(no_queue_to_consume);
