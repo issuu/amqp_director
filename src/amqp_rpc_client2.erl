@@ -40,6 +40,7 @@
                 app_id,
                 exchange,
                 routing_key,
+                ack = true, % Should we ack messages?
                 continuations = dict:new(),
                 monitors = dict:new(),
                 correlation_id = 0}).
@@ -147,9 +148,9 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
 %% Registers this RPC client instance as a consumer to handle rpc responses
 setup_consumer(#state{channel = _Channel, reply_queue = none}) ->
     ok;
-setup_consumer(#state{channel = Channel, reply_queue = Q}) ->
+setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
     amqp_channel:register_return_handler(Channel, self()),
-    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}).
+    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q, no_ack = not Ack}).
 
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
@@ -299,9 +300,12 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
                                          payload = Payload}},
            State = #state{ continuations = Conts,
                            monitors = Monitors,
-                           channel = Channel }) ->
+                           channel = Channel,
+                           ack = Ack }) ->
     %% Always Ack the response messages, before processing
-    amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
+    case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
+                false -> ok
+    end,
     case dict:find(Id, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
@@ -343,7 +347,8 @@ try_connect(Configuration, ConnectionRef, ReconnectTime) ->
                                 exchange    = proplists:get_value(exchange, Configuration, <<>>),
                                 app_id      = proplists:get_value(app_id, Configuration,
                                                                   list_to_binary(atom_to_list(node()))),
-                                routing_key = proplists:get_value(routing_key, Configuration)},
+                                routing_key = proplists:get_value(routing_key, Configuration),
+                                ack = not (proplists:get_value(no_ack, Configuration, false)) },
           State = setup_queues(InitialState, Configuration),
           setup_consumer(State),
           State;
