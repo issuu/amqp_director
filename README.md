@@ -26,7 +26,7 @@ don't care about it anymore.
 The library exposes two supervisors, intended for embedding into another supervisor tree of your
 choice, so the link becomes part of your application. Suppose we have:
 
-	ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
+    ConnInfo = #amqp_params_network { username = <<"guest">>, password = <<"guest">>,
 		                              host = "localhost", port = 5672 },
     QArgs = [{<<"x-message-ttl">>, long, 30000},
              {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
@@ -36,6 +36,7 @@ choice, so the link becomes part of your application. Suppose we have:
         % {consumer_tag, <<>>}, % This is the default
         % {exchange, <<>>}, % This is the default
         {consume_queue, <<"test_queue">>},
+        no_ack,
         {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
                                                 arguments = QArgs }]}],
 
@@ -50,6 +51,9 @@ both a client and a server.
   topic exchange for instance so one can route messages by topic.
 * The key `consume_queue` tells the server to consume from this queue. It is an error
   to try running a server without a queue to consume on.
+* The atom `no_ack` designates that we want to enable no_ack on the queue we consume
+  from. This is also known as "automatic ack'ing". It will make broker automatically ACK
+  messages before forwarding them so the client doesn't have to do so.
 * Finally, `queue_definitions` is a list of queue definitions to inject into the AMQP
   system. Currently we only support `#'queue.declare'{}` and `#'queue.bind'{}` but it
   can rather easily be extended.
