@@ -150,6 +150,7 @@ setup_consumer(#state{channel = _Channel, reply_queue = none}) ->
     ok;
 setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
     amqp_channel:register_return_handler(Channel, self()),
+    amqp_channel:call(Channel, #'basic.qos'{prefetch_count = 100}),
     #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q, no_ack = not Ack}).
 
 %% Publishes to the broker, stores the From address against

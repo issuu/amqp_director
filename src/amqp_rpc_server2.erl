@@ -181,6 +181,7 @@ connect(ConnectionRef, Config, Fun) ->
                   Q ->
                       ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>),
                       NoAck = proplists:get_value(no_ack, Config, false),
+                      amqp_channel:call(Channel, #'basic.qos'{prefetch_count = 2}),
                       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
                          queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
                       #state{channel = Channel, handler = Fun, ack = not NoAck }
