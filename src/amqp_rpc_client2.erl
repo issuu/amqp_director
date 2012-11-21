@@ -164,8 +164,6 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                        app_id = AppId,
                        monitors = Monitors,
                        continuations = Continuations}) ->
-    %% Properties should follow the rules of:
-    %% http://trac.tissuu.com:8000/trac/wiki/IssuuAmqp
     Props = #'P_basic'{correlation_id = <<CorrelationId:64>>,
                        content_type = ContentType,
                        type = <<"request">>,
