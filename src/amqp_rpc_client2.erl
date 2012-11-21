@@ -31,7 +31,7 @@
 -behaviour(gen_server).
 
 -export([start_link/3]).
--export([cast/4, call/3, call/4, call/5]).
+-export([cast/4, cast/5, call/3, call/4, call/5]).
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2, format_status/2]).
 
@@ -40,6 +40,7 @@
                 app_id,
                 exchange,
                 routing_key,
+                ack = true, % Should we ack messages?
                 continuations = dict:new(),
                 monitors = dict:new(),
                 correlation_id = 0}).
@@ -58,7 +59,7 @@
 start_link(Name, Configuration, ConnRef) ->
     gen_server:start_link({local, Name}, ?MODULE, [Configuration, ConnRef], []).
 
-%% @doc Send a fire-and-forget message to the queue.
+%% @doc Send a fire-and-forget message to the exchange.
 %% This implements the usual cast operation where a message is forwarded to a queue.
 %% Note that there is *no* guarantee that the message will be sent. In particular,
 %% if the queue is down, the message will be lost. You also have to supply a ContentType
@@ -72,10 +73,25 @@ start_link(Name, Configuration, ConnRef) ->
 cast(RpcClient, Payload, ContentType, Type) ->
   gen_server:cast(RpcClient, {cast, Payload, ContentType, Type}).
 
+%% @doc Send a fire-and-forget message to the exchange with a routing key
+%% This call acts like the call cast/4 except that it also allows the user to
+%% supply a routing key
+-spec cast(RpcClient, Payload, ContentType, Type, RoutingKey) -> ok
+  when RpcClient :: atom() | pid(),
+       Payload :: binary(),
+       ContentType :: binary(),
+       Type :: binary(),
+       RoutingKey :: binary().
+cast(RpcClient, Payload, ContentType, Type, RoutingKey) ->
+  gen_server:cast(RpcClient, {rk_cast, Payload, ContentType, Type, RoutingKey}).
+
 %% @equiv call(RpcClient, Payload, ContentType, 5000)
 call(RpcClient, Payload, ContentType) ->
     call(RpcClient, Payload, ContentType, 5000).
 
+
+
+%% @end
 %% @doc Invokes an RPC. Note the caller of this function is responsible for
 %% encoding the request and decoding the response. If the timeout is hit, the
 %% calling process will exit. The call will set `ContentType' as the type of
@@ -132,9 +148,9 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
 %% Registers this RPC client instance as a consumer to handle rpc responses
 setup_consumer(#state{channel = _Channel, reply_queue = none}) ->
     ok;
-setup_consumer(#state{channel = Channel, reply_queue = Q}) ->
+setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
     amqp_channel:register_return_handler(Channel, self()),
-    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q}).
+    #'basic.consume_ok' {} = amqp_channel:call(Channel, #'basic.consume'{queue = Q, no_ack = not Ack}).
 
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
@@ -174,10 +190,9 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                   monitors = dict:store(Ref, CorrelationId, Monitors)}}.
 
 %% Publish on a queue in a fire-n-forget fashion.
-publish_cast(Payload, ContentType, Type,
+publish_cast(Payload, ContentType, Type, RoutingKey,
              #state { channel = Channel,
                       exchange = X,
-                      routing_key = RoutingKey,
                       app_id = AppId }) ->
     Props = #'P_basic'{content_type = ContentType,
                        type = Type,
@@ -211,8 +226,6 @@ terminate(_Reason, #state{channel = Channel}) ->
 %% @private
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
-
-%% @private
 handle_call(_Msg, _From, #state { channel = undefined } = State) ->
     {reply, {error, no_connection}, State};
 handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
@@ -230,8 +243,11 @@ handle_cast({cast, _Payload, _ContentType, _Type}, #state { channel = undefined 
     %% We can't do anything but throw away the message here!
     error_logger:info_msg("Warning - throwing away message for an undefined channel."),
     {noreply, State};
-handle_cast({cast, Payload, ContentType, Type}, State) ->
-    publish_cast(Payload, ContentType, Type, State),
+handle_cast({cast, Payload, ContentType, Type}, #state { routing_key = RK } = State) ->
+    publish_cast(Payload, ContentType, Type, RK, State),
+    {noreply, State};
+handle_cast({rk_cast, Payload, ContentType, Type, RoutingKey}, State) ->
+    publish_cast(Payload, ContentType, Type, RoutingKey, State),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -284,9 +300,12 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
                                          payload = Payload}},
            State = #state{ continuations = Conts,
                            monitors = Monitors,
-                           channel = Channel }) ->
+                           channel = Channel,
+                           ack = Ack }) ->
     %% Always Ack the response messages, before processing
-    amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
+    case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
+                false -> ok
+    end,
     case dict:find(Id, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
@@ -328,7 +347,8 @@ try_connect(Configuration, ConnectionRef, ReconnectTime) ->
                                 exchange    = proplists:get_value(exchange, Configuration, <<>>),
                                 app_id      = proplists:get_value(app_id, Configuration,
                                                                   list_to_binary(atom_to_list(node()))),
-                                routing_key = proplists:get_value(routing_key, Configuration)},
+                                routing_key = proplists:get_value(routing_key, Configuration),
+                                ack = not (proplists:get_value(no_ack, Configuration, false)) },
           State = setup_queues(InitialState, Configuration),
           setup_consumer(State),
           State;
