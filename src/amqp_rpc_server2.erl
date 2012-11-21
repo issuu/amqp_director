@@ -35,7 +35,9 @@
          handle_cast/2, handle_info/2]).
 -export([start_link/3]).
 
--record(state, {channel, handler}).
+-record(state, {channel, handler,
+                ack = true % should we ack messages?
+               }).
 -define(MAX_RECONNECT, timer:seconds(30)).
 
 %%--------------------------------------------------------------------------
@@ -87,7 +89,7 @@ handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
              #amqp_msg{props = Props, payload = Payload}},
-            State = #state{handler = Fun, channel = Channel}) ->
+            State = #state{handler = Fun, channel = Channel, ack = Ack}) ->
     #'P_basic'{correlation_id = CorrelationId,
                content_type = ContentType,
                type = Type,
@@ -102,17 +104,27 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
                                    mandatory = true},
         amqp_channel:call(Channel, Publish, #amqp_msg{props = Properties,
                                                       payload = Response}),
-        amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
+        case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
+                    false -> ok
+        end,
         {noreply, State};
-      reject ->
+      reject when Ack ->
         amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = true}),
         {noreply, State};
-      reject_no_requeue ->
+      reject when not Ack ->
+        error_logger:warning_msg("reject wanted, but channel set to no-ack"),
+        {noreply, State};
+      reject_no_requeue when Ack ->
         amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
         {noreply, State};
-      ack ->
+      reject_no_requeue when not Ack ->
+        error_logger:warning_msg("reject_no_requeue wanted, but channel set to no-ack"),
+        {noreply, State};
+      ack when Ack ->
         amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
-        {noreply, State}
+        {noreply, State};
+      ack when not Ack ->
+        {noreply, State} % Ignore acks here
     end;
 handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
     error_logger:info_msg("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
@@ -167,9 +179,11 @@ connect(ConnectionRef, Config, Fun) ->
               case proplists:get_value(consume_queue, Config, undefined) of
                   undefined -> exit(no_queue_to_consume);
                   Q ->
-                      ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>), 
-                      #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{queue = Q, consumer_tag = ConsumerTag}),
-                      #state{channel = Channel, handler = Fun}
+                      ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>),
+                      NoAck = proplists:get_value(no_ack, Config, false),
+                      #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
+                         queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
+                      #state{channel = Channel, handler = Fun, ack = not NoAck }
               end;
            closing ->
              throw(reconnect)

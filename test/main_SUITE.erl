@@ -8,6 +8,7 @@
 
 -export([blind_cast_test/1,
          connectivity_test/1,
+         no_ack_test/1,
          immediate_failure_test/1]).
          
 -include_lib("common_test/include/ct.hrl").
@@ -26,6 +27,7 @@ groups() ->
     [{integration_test_group, [],
         [connectivity_test,
          immediate_failure_test,
+         no_ack_test,
          blind_cast_test]}].
 
 -spec all() -> proplists:proplist().
@@ -60,28 +62,16 @@ end_per_testcase(_Case, _Config) ->
 %% ----------------------------------------------------------------------
   
 connectivity_test(_Config) ->
-	%% Spawn a RabbitMQ server system:
-	{Host, Port, UN, PW} = ct:get_config(amqp_host),
-	ConnInfo = #amqp_params_network { username = UN, password = PW,
-                                      host = Host, port = Port },
-    QArgs = [{<<"x-message-ttl">>, long, 30000},
-             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
     AppId = amqp_director:mk_app_id(client_connection),
-    QConf =
+	QConf =
        [{reply_queue, <<"replyq-", AppId/binary>>},
         {consumer_tag, <<"my.consumer">>},
         {app_id, AppId},
-        {routing_key, <<"test_queue">>},
+        {routing_key, <<"test_queue_2">>},
         % {exchange, <<>>}, % This is the default
-        {consume_queue, <<"test_queue">>},
-        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
-                                                arguments = QArgs }]}],
-    {ok, _SPid} = amqp_server_sup:start_link(
-         server_connection_mgr, ConnInfo, QConf, fun f/3, 5),
-    {ok, _CPid} = amqp_client_sup:start_link(client_connection,
-                                             client_connection_mgr, ConnInfo, QConf),
-    
-    timer:sleep(timer:seconds(1)), %% Allow the system to connect
+        {consume_queue, <<"test_queue_2">>},
+        {queue_definitions, [#'queue.declare' { queue = <<"test_queue_2">>, arguments = [] }]}],
+    amqp_connect(client_connection, fun f/3, QConf),
 	do_connectivity_work(1000),
 	ok.
 	
@@ -92,14 +82,53 @@ do_connectivity_work(N) ->
   end,
   do_connectivity_work(N-1).
   
+no_ack_test(_Config) ->
+    QArgs = [{<<"x-message-ttl">>, long, 30000},
+             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
+    AppId = amqp_director:mk_app_id(client_connection),
+    QConf =
+       [{reply_queue, <<"replyq-", AppId/binary>>},
+        no_ack,
+        {consumer_tag, <<"my.consumer">>},
+        {app_id, AppId},
+        {routing_key, <<"test_queue">>},
+        % {exchange, <<>>}, % This is the default
+        {consume_queue, <<"test_queue">>},
+        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
+                                                arguments = QArgs }]}],
+
+    amqp_connect(no_ack_test_client, fun f/3, QConf),
+    do_no_ack_work(),
+    ok.
+
+do_no_ack_work() ->
+    Parent = self(),
+    Pids = [spawn_link(fun () -> do_work(Parent, 1000) end) || _ <- lists:seq(1, 100)],
+    collect(Pids).
+
+collect([]) ->
+  done;
+collect(Pids) ->
+  receive
+    {done, Pid} -> collect(Pids -- [Pid])
+  end.
+
+do_work(Parent, N) ->
+    do_work_(N),
+    Parent ! {done, self()}.
+
+do_work_(0) -> ok;
+do_work_(N) ->
+    case amqp_rpc_client2:call(no_ack_test_client, <<"Hello.">>, <<"application/x-erlang-term">>) of
+        {ok, <<"ok.">>, _} -> ok
+    end,
+    do_work_(N-1).
+
 blind_cast_test(_Config) ->
-    %% Spawn
     %% Spawn a RabbitMQ server system:
 	{Host, Port, UN, PW} = ct:get_config(amqp_host),
 	ConnInfo = #amqp_params_network { username = UN, password = PW,
                                       host = Host, port = Port },
-    QArgs = [{<<"x-message-ttl">>, long, 30000},
-             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
     AppId = amqp_director:mk_app_id(client_connection_cast),
     QConf =
        [{reply_queue, none},
@@ -109,8 +138,8 @@ blind_cast_test(_Config) ->
         {queue_definitions, [#'queue.declare' { queue = <<"rk_test_queue">> },
                              #'queue.bind' { queue = <<"rk_test_queue">>, exchange = <<"amq.topic">>,
                                              routing_key = <<"rk.*">> } ]}],
-    {ok, CPid} = amqp_client_sup:start_link(client_connection_cast,
-                                            client_connection_cast_mgr, ConnInfo, QConf),
+    {ok, _CPid} = amqp_client_sup:start_link(client_connection_cast,
+                                             client_connection_cast_mgr, ConnInfo, QConf),
     
     %% Set up a consumer hole
     TesterPid = self(),
@@ -146,7 +175,7 @@ immediate_failure_test(_Config) ->
         {consume_queue, <<"test_queue">>},
         {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
                                                 arguments = QArgs }]}],
-    {ok, CPid} = amqp_client_sup:start_link(client_connection_ifail,
+    {ok, _CPid} = amqp_client_sup:start_link(client_connection_ifail,
                                              client_connection_ifail_mgr, ConnInfo, QConf),
     
     timer:sleep(timer:seconds(1)), %% Allow the system to connect
@@ -169,3 +198,17 @@ do_connectivity_work_fail(N) ->
     Type :: binary().
 f(<<"Hello.">>, _ContentType, _Type) ->
     {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
+
+%% Standard connection to the RabbitMQ broker
+amqp_connect(Name, Fun, QConf) ->
+    %% Spawn a RabbitMQ server system:
+	{Host, Port, UN, PW} = ct:get_config(amqp_host),
+	ConnInfo = #amqp_params_network { username = UN, password = PW,
+                                      host = Host, port = Port },
+    {ok, _SPid} = amqp_server_sup:start_link(
+         server_connection_mgr, ConnInfo, QConf, Fun, 5),
+    {ok, _CPid} = amqp_client_sup:start_link(Name,
+                                             client_connection_mgr, ConnInfo, QConf),
+    
+    timer:sleep(timer:seconds(1)). %% Allow the system to connect
+
