@@ -8,6 +8,5 @@
                   stdlib,
                   amqp_client
                  ]},
-  {mod, { amqp_director_app, []}},
   {env, []}
  ]}.

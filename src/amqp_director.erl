@@ -2,22 +2,10 @@
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
--export ([start/0, stop/0]).
 -export ([children_specs/2]).
 -export ([parse_connection_parameters/1]).
 -export ([child_spec/1, server_child_spec/5, client_child_spec/3]).
--export ([add_connection/2, add_character/2]).
 -export([mk_app_id/1]).
-
-start() ->
-    application:load( amqp_director ),
-    [ ensure_started(A) || A <- dependent_apps()],
-    application:start( amqp_director ).
-
-stop() ->
-    application:stop( amqp_director ),
-    [ application:stop(A) || A <- lists:reverse(dependent_apps())],
-    ok.
 
 %% @doc Construct an application Id for this node based on a RegName atom
 %% @end
@@ -29,16 +17,6 @@ mk_app_id(RegName) when is_atom(RegName) ->
     [Hostname, $-, atom_to_list(node()), $-,
      integer_to_list(Creation), $.,
      integer_to_list(Mega * 1000000 + S), $., atom_to_list(RegName)]).
-
--spec add_connection( atom(), #amqp_params_network{} ) ->
-      {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
-add_connection( Name, #amqp_params_network{} = AmqpConnInfo ) ->
-    amqp_director_connection_sup:register_connection(Name, AmqpConnInfo).
-
--spec add_character( {module(), term()}, atom() ) ->
-      {ok, pid()} | {ok, pid(), term()} | {ok, undefined} | {error, term()}.
-add_character( CharacterModAndArgs, ConnName ) ->
-    amqp_director_character_sup:register_character(CharacterModAndArgs, ConnName).
 
 server_child_spec(Name, Fun, ConnInfo, ServersCount, Config) ->
 	ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),

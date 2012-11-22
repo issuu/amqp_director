@@ -7,3 +7,4 @@ scrap
 *.beam
 *.plt
 test_logs
+*.DS_Store
