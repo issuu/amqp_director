@@ -1,4 +1,5 @@
 {logdir, "test_logs"}.
+{cover, "amqp_director.cover"}.
 {config, "test-local.config"}.
 {alias, test, "test"}.
 %% Select suites to run
