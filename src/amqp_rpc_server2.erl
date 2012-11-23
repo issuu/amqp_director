@@ -174,13 +174,13 @@ connect(ConnectionRef, Config, Fun) ->
                           Connection, {amqp_direct_consumer, [self()]}) of
             {ok, Channel} ->
               erlang:monitor(process, Channel),
-              amqp_channel:register_return_handler(Channel, self()),
               ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
               case proplists:get_value(consume_queue, Config, undefined) of
                   undefined -> exit(no_queue_to_consume);
                   Q ->
                       ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>),
                       NoAck = proplists:get_value(no_ack, Config, false),
+                      amqp_channel:register_return_handler(Channel, self()),
                       amqp_channel:call(Channel, #'basic.qos'{prefetch_count = 2}),
                       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
                          queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
