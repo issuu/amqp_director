@@ -39,14 +39,18 @@ client_child_spec(Name, ConnInfo, Config) ->
 
 parse_connection_parameters(Props) ->
   case [proplists:get_value(E, Props)
-         || E <- [host, port, username, password]] of
-    [Host, Port, Username, Password]
+         || E <- [host, port, username, password, virtual_host]] of
+    [Host, Port, Username, Password, VHost]
       when is_list(Host),
            Port == undefined orelse is_integer(Port),
            is_binary(Username),
            is_binary(Password) ->
+       VirtualHost = case VHost of
+                         undefined -> <<"/">>;
+                         VH -> VH
+                     end,
        #amqp_params_network { username = Username, password = Password,
-                              host = Host, port = Port };
+                              host = Host, port = Port, virtual_host = VirtualHost };
     _Otherwise ->
       exit({error, parse_connection_parameters})
   end.
