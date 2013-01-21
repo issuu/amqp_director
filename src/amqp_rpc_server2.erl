@@ -65,6 +65,7 @@ start_link(ConnectionRef, Config, Fun) ->
 
 %% @private
 init([ConnectionRef, Config, Fun]) ->
+    process_flag(trap_exit, true),
     ReconnectTime = 500,
 	timer:send_after(ReconnectTime, self(),
                      {reconnect, ConnectionRef, Config, Fun,

@@ -55,10 +55,14 @@ fetch(RegName) ->
 
 %% @private
 init([ConnInfo]) ->
+    process_flag(trap_exit, true),
     {ok, try_connect(#state { info = ConnInfo }, 1000)}.
 
 
 %% @private
+terminate(_Reason, #state { conn = Conn }) when is_pid(Conn) ->
+    catch amqp_connection:close(Conn),
+    ok;
 terminate(_Reason, _State) ->
     ok.
 

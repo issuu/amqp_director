@@ -207,6 +207,7 @@ publish_cast(Payload, ContentType, Type, RoutingKey,
 %% Sets up a reply queue and consumer within an existing channel
 %% @private
 init([Configuration, ConnectionRef]) ->
+    process_flag(trap_exit, true),
     ReconnectTime = 500,
     timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
                                              min(ReconnectTime * 2, ?MAX_RECONNECT)}),
