@@ -8,8 +8,7 @@
 
 -export([blind_cast_test/1,
          connectivity_test/1,
-         no_ack_test/1,
-         immediate_failure_test/1]).
+         no_ack_test/1]).
          
 -include_lib("common_test/include/ct.hrl").
 -include_lib("amqp_client/include/amqp_client.hrl").
@@ -26,7 +25,6 @@ suite() ->
 groups() ->
     [{integration_test_group, [],
         [connectivity_test,
-         immediate_failure_test,
          no_ack_test,
          blind_cast_test]}].
 
@@ -157,37 +155,6 @@ blind_cast_test(_Config) ->
 	receive {msg, <<"1">>, _, _} -> ok after 1000 -> ct:fail("Incorrect Receive") end,
 	receive {msg, <<"2">>, _, _} -> ok after 1000 -> ct:fail("Incorrect Receive") end,
 	ok.
-
-immediate_failure_test(_Config) ->
-	%% Spawn a RabbitMQ server system:
-	{Host, Port, UN, PW} = ct:get_config(amqp_host),
-	ConnInfo = #amqp_params_network { username = UN, password = PW,
-                                      host = Host, port = Port },
-    QArgs = [{<<"x-message-ttl">>, long, 30000},
-             {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
-    AppId = amqp_director:mk_app_id(client_connection),
-    QConf =
-       [{reply_queue, <<"replyq-", AppId/binary>>},
-        {consumer_tag, <<"my.consumer">>},
-        {app_id, AppId},
-        {routing_key, <<"test_queue">>},
-        % {exchange, <<>>}, % This is the default
-        {consume_queue, <<"test_queue">>},
-        {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
-                                                arguments = QArgs }]}],
-    {ok, _CPid} = amqp_client_sup:start_link(client_connection_ifail,
-                                             client_connection_ifail_mgr, ConnInfo, QConf),
-    
-    timer:sleep(timer:seconds(1)), %% Allow the system to connect
-	do_connectivity_work_fail(1000),
-	ok.
-	
-do_connectivity_work_fail(0) -> ok;
-do_connectivity_work_fail(N) ->
-  case amqp_rpc_client2:call(client_connection_ifail, <<"Hello.">>, <<"application/x-erlang-term">>) of
-        {error, no_consumers} -> ok
-  end,
-  do_connectivity_work_fail(N-1).
   
   
 %% --------------------------------------------------------------------------
