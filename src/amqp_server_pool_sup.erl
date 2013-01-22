@@ -29,14 +29,16 @@
        Fun :: fun ((binary()) -> {reply, binary()} | ack | reject | reject_no_requeue),
        WorkerCount :: pos_integer().
 start_link(ConnectionRef, Config, Fun, WorkerCount) ->
-    supervisor:start_link(?MODULE, [ConnectionRef, Config, Fun, WorkerCount]).
+    Res = {ok, Pid} = supervisor:start_link(?MODULE, []),
+    [{ok, _} = supervisor:start_child(Pid, [ConnectionRef, Config, Fun])
+      || _ <- lists:seq(1, WorkerCount)],
+    Res.
 
 %% ===================================================================
-init([ConnectionRef, Config, Fun, WorkerCount]) ->
+init([]) ->
     %% The given servers are named as atoms '1' to '20'. It has to be an atom here, you can not use
     %% an arbitrary term.
-    ServerPool = [{list_to_atom(integer_to_list(N)), {amqp_rpc_server2, start_link,
-                                                      [ConnectionRef, Config, Fun]},
-                     permanent, 5000, worker, [amqp_rpc_server2]}
-                  || N <- lists:seq(1, WorkerCount)],
-    {ok, { {one_for_one, 10, 3600}, ServerPool } }.
+    ChildSpec =
+      {child, {amqp_rpc_server2, start_link, []},
+         permanent, 5000, worker, [amqp_rpc_server2]},
+    {ok, { {simple_one_for_one, 10, 3600}, [ChildSpec]} }.
