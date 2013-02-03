@@ -197,7 +197,7 @@ publish_cast(Payload, ContentType, Type, RoutingKey,
                        app_id = AppId},
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
-                               mandatory = true},
+                               mandatory = false},
     amqp_channel:call(Channel, Publish, #amqp_msg { props = Props,
                                                     payload = Payload }).
                                                     
