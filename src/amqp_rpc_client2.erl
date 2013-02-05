@@ -164,7 +164,8 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                        app_id = AppId,
                        monitors = Monitors,
                        continuations = Continuations}) ->
-    Props = #'P_basic'{correlation_id = <<CorrelationId:64>>,
+    CorrelationIdBin = list_to_binary(integer_to_list(CorrelationId)),
+    Props = #'P_basic'{correlation_id = CorrelationIdBin,
                        content_type = ContentType,
                        type = <<"request">>,
                        app_id = AppId,
@@ -177,6 +178,7 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
     %%  have a consumer on it currently. Otherwise routing a message to that
     %%  queue is also an error. For RPC we expect there to be a handler currently
     %%  connected. If not we rather handle the error quickly.
+
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
                                mandatory = true },
@@ -184,8 +186,8 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
     Ref = erlang:monitor(process, Pid),
     {ok,
       State#state{correlation_id = CorrelationId + 1,
-                  continuations = dict:store(CorrelationId, {From, Ref}, Continuations),
-                  monitors = dict:store(Ref, CorrelationId, Monitors)}}.
+                  continuations = dict:store(CorrelationIdBin, {From, Ref}, Continuations),
+                  monitors = dict:store(Ref, CorrelationIdBin, Monitors)}}.
 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, ContentType, Type, RoutingKey,
@@ -280,21 +282,21 @@ handle_info(#'basic.cancel'{}, State) ->
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.return' { reply_code = ReplyCode },
-             #amqp_msg { props = #'P_basic' { correlation_id = <<Id:64>> }} },
+             #amqp_msg { props = #'P_basic' { correlation_id = CorrelationIdBin }} },
             #state { continuations = Conts,
                      monitors = Monitors } = State) ->
-    case dict:find(Id, Conts) of
+    case dict:find(CorrelationIdBin, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
         {ok, {From, MonitorRef}} ->
             erlang:demonitor(MonitorRef),
             gen_server:reply(From, handle_reply_code(ReplyCode)),
-            {noreply, State#state { continuations = dict:erase(Id, Conts),
+            {noreply, State#state { continuations = dict:erase(CorrelationIdBin, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end;
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
-            #amqp_msg{props = #'P_basic'{correlation_id = <<Id:64>>,
+            #amqp_msg{props = #'P_basic'{correlation_id = CorrelationIdBin,
                                          content_type = ContentType},
                                          payload = Payload}},
            State = #state{ continuations = Conts,
@@ -305,14 +307,14 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
     case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
                 false -> ok
     end,
-    case dict:find(Id, Conts) of
+    case dict:find(CorrelationIdBin, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
         {ok, {From, MonitorRef}} ->
              erlang:demonitor(MonitorRef),
              gen_server:reply(From, {ok, Payload, ContentType}),
-             {noreply, State#state{ continuations = dict:erase(Id, Conts),
+             {noreply, State#state{ continuations = dict:erase(CorrelationIdBin, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end.
     
