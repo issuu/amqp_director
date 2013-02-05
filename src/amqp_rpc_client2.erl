@@ -164,7 +164,7 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                        app_id = AppId,
                        monitors = Monitors,
                        continuations = Continuations}) ->
-    Props = #'P_basic'{correlation_id = <<CorrelationId:64>>,
+    Props = #'P_basic'{correlation_id = list_to_binary(integer_to_list(CorrelationId)),
                        content_type = ContentType,
                        type = <<"request">>,
                        app_id = AppId,
@@ -280,21 +280,22 @@ handle_info(#'basic.cancel'{}, State) ->
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.return' { reply_code = ReplyCode },
-             #amqp_msg { props = #'P_basic' { correlation_id = <<Id:64>> }} },
+             #amqp_msg { props = #'P_basic' { correlation_id = Id }} },
             #state { continuations = Conts,
                      monitors = Monitors } = State) ->
-    case dict:find(Id, Conts) of
+    CorrelationId = list_to_integer(binary_to_list(Id)),
+    case dict:find(CorrelationId, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
         {ok, {From, MonitorRef}} ->
             erlang:demonitor(MonitorRef),
             gen_server:reply(From, handle_reply_code(ReplyCode)),
-            {noreply, State#state { continuations = dict:erase(Id, Conts),
+            {noreply, State#state { continuations = dict:erase(CorrelationId, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end;
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
-            #amqp_msg{props = #'P_basic'{correlation_id = <<Id:64>>,
+            #amqp_msg{props = #'P_basic'{correlation_id = Id,
                                          content_type = ContentType},
                                          payload = Payload}},
            State = #state{ continuations = Conts,
@@ -302,17 +303,18 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
                            channel = Channel,
                            ack = Ack }) ->
     %% Always Ack the response messages, before processing
+    CorrelationId = list_to_integer(binary_to_list(Id)),
     case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
                 false -> ok
     end,
-    case dict:find(Id, Conts) of
+    case dict:find(CorrelationId, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
         {ok, {From, MonitorRef}} ->
              erlang:demonitor(MonitorRef),
              gen_server:reply(From, {ok, Payload, ContentType}),
-             {noreply, State#state{ continuations = dict:erase(Id, Conts),
+             {noreply, State#state{ continuations = dict:erase(CorrelationId, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end.
     
