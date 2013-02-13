@@ -111,13 +111,16 @@ call(RpcClient, Payload, ContentType, Timeout) ->
 %% This variant is equivalent to @ref call/4 but it also allows the caller to
 %% specify a routing key to use when publishing a message.
 %% @end
--spec call(RpcClient, Request, ContentType, RoutingKey, Timeout) -> Response
+-spec call(RpcClient, Request, ContentType, RoutingKey, Timeout) ->
+        {ok, Payload, ContentType} | {error, Reason}
   when RpcClient :: atom() | pid(),
        Request :: binary(),
        ContentType :: binary(),
        Timeout :: pos_integer(),
        RoutingKey :: binary(),
-       Response :: {ok, binary()} | {error, term()}.
+       Payload :: binary(),
+       ContentType :: binary(),
+       Reason :: term().
 call(RpcClient, Payload, ContentType, RoutingKey, Timeout) ->
     gen_server:call(RpcClient, {rk_call, Payload, ContentType, RoutingKey}, Timeout).
 
