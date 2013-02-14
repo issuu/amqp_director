@@ -98,12 +98,15 @@ call(RpcClient, Payload, ContentType) ->
 %% the message (essentially the mime type). The `Type' of the message will always
 %% be set to `request'.
 %% @end
--spec call(RpcClient, Request, ContentType, Timeout) -> Response
+-spec call(RpcClient, Request, ContentType, Timeout) ->
+      {ok, Payload, ContentType} | {error, Reason}
   when RpcClient :: atom() | pid(),
        Request :: binary(),
        ContentType :: binary(),
        Timeout :: pos_integer(),
-       Response :: {ok, binary()} | {error, term()}.
+       Payload :: binary(),
+       ContentType :: binary(),
+       Reason :: term().
 call(RpcClient, Payload, ContentType, Timeout) ->
     gen_server:call(RpcClient, {call, Payload, ContentType}, Timeout).
 
