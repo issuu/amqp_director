@@ -188,7 +188,7 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
                                mandatory = true },
-    ok = amqp_channel:call(Channel, Publish, #amqp_msg{props = Props, payload = Payload}),
+    ok = amqp_channel:cast(Channel, Publish, #amqp_msg{props = Props, payload = Payload}),
     Ref = erlang:monitor(process, Pid),
     {ok,
       State#state{correlation_id = CorrelationId + 1,
@@ -206,7 +206,7 @@ publish_cast(Payload, ContentType, Type, RoutingKey,
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
                                mandatory = false},
-    amqp_channel:call(Channel, Publish, #amqp_msg { props = Props,
+    amqp_channel:cast(Channel, Publish, #amqp_msg { props = Props,
                                                     payload = Payload }).
                                                     
 %%--------------------------------------------------------------------------
