@@ -132,7 +132,10 @@ handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
     {noreply, State};
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
     error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
-	{stop, Reason, State#state{ channel = undefined }}.
+	{stop, Reason, State#state{ channel = undefined }};
+handle_info(Unknown, State) ->
+    error_logger:warning_message("AMQP Director Server received an unknown msg: ~p", [Unknown]),
+    {noreply, State}.
 
 %% @private
 handle_call(stop, _From, State) ->

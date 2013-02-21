@@ -101,7 +101,7 @@ no_ack_test(_Config) ->
 
 do_no_ack_work() ->
     Parent = self(),
-    Pids = [spawn_link(fun () -> do_work(Parent, 1000) end) || _ <- lists:seq(1, 100)],
+    Pids = [spawn_link(fun () -> do_work(Parent, 10) end) || _ <- lists:seq(1, 10000)],
     collect(Pids).
 
 collect([]) ->
