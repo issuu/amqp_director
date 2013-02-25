@@ -134,7 +134,7 @@ handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
     error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
 	{stop, Reason, State#state{ channel = undefined }};
 handle_info(Unknown, State) ->
-    error_logger:warning_message("AMQP Director Server received an unknown msg: ~p", [Unknown]),
+    error_logger:warning_report([{unknown_msg, Unknown}]),
     {noreply, State}.
 
 %% @private
