@@ -141,7 +141,7 @@ handle_info({'EXIT', _Pid, shutdown}, State) ->
     {noreply, State};
 handle_info({'EXIT', Pid, Error}, State) ->
     error_logger:warning_report([amqp_rpc_server_2, {linked_process_abnormal_exit, Pid, Error}]),
-    {noreply, State};
+    {stop, {linked_process_exit, Error}, State};
 handle_info(Unknown, State) ->
     error_logger:warning_report([{amqp_rpc_server_2, handle_info}, {unknown, Unknown}]),
     {noreply, State}.
