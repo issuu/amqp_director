@@ -133,8 +133,17 @@ handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
     error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
 	{stop, Reason, State#state{ channel = undefined }};
+handle_info({'EXIT', _Pid, normal}, State) ->
+    %% Since we trap exits, normally exiting processes will yell in the log, quell them.
+    {noreply, State};
+handle_info({'EXIT', _Pid, shutdown}, State) ->
+    %% Shutdowns are also normal exit reasons, quell them.
+    {noreply, State};
+handle_info({'EXIT', Pid, Error}, State) ->
+    error_logger:warning_report([amqp_rpc_server_2, {linked_process_abnormal_exit, Pid, Error}]),
+    {noreply, State};
 handle_info(Unknown, State) ->
-    error_logger:warning_report([{unknown_msg, Unknown}]),
+    error_logger:warning_report([{amqp_rpc_server_2, handle_info}, {unknown, Unknown}]),
     {noreply, State}.
 
 %% @private
