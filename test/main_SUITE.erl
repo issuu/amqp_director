@@ -117,7 +117,7 @@ do_work(Parent, N) ->
 
 do_work_(0) -> ok;
 do_work_(N) ->
-    case amqp_rpc_client2:call(no_ack_test_client, <<"Hello.">>, <<"application/x-erlang-term">>) of
+    case amqp_rpc_client2:call(no_ack_test_client, <<"Hello.">>, <<"application/x-erlang-term">>, 6000) of
         {ok, <<"ok.">>, _} -> ok
     end,
     do_work_(N-1).

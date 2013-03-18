@@ -41,6 +41,7 @@
                 exchange,
                 routing_key,
                 ack = true, % Should we ack messages?
+                delivery_mode = 1, % should reply msg persist (2) or not (1)? 
                 continuations = dict:new(),
                 monitors = dict:new(),
                 correlation_id = 0}).
@@ -164,6 +165,7 @@ setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
 %% the next request
 publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
         State = #state{channel = Channel,
+                       delivery_mode = DeliveryMode,
                        reply_queue = Q,
                        exchange = X,
                        correlation_id = CorrelationId,
@@ -175,7 +177,8 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
                        content_type = ContentType,
                        type = <<"request">>,
                        app_id = AppId,
-                       reply_to = Q},
+                       reply_to = Q,
+                       delivery_mode = DeliveryMode},
     %% Set Message options:
     %% Setting mandatory means that there must be a routable target queue
     %%  through the exchange. If no such queue exist, an error is returned out
@@ -198,11 +201,13 @@ publish(Payload, ContentType, {Pid, _Tag} = From, RoutingKey,
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, ContentType, Type, RoutingKey,
              #state { channel = Channel,
+                      delivery_mode = DeliveryMode,
                       exchange = X,
                       app_id = AppId }) ->
     Props = #'P_basic'{content_type = ContentType,
                        type = Type,
-                       app_id = AppId},
+                       app_id = AppId,
+                       delivery_mode = DeliveryMode},
     Publish = #'basic.publish'{exchange = X,
                                routing_key = RoutingKey,
                                mandatory = false},
@@ -215,10 +220,17 @@ publish_cast(Payload, ContentType, Type, RoutingKey,
 %% @private
 init([Configuration, ConnectionRef]) ->
     process_flag(trap_exit, true),
-    ReconnectTime = 500,
-    timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
-                                             min(ReconnectTime * 2, ?MAX_RECONNECT)}),
-	{ok, #state { channel = undefined }}.
+    case amqp_definitions:verify_config(Configuration) of
+        ok ->
+            ReconnectTime = 500,
+            timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
+                                                    min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+            {ok, #state { channel = undefined }};
+        {conflict, Msg, BadQueueDef} ->
+            error_logger:error_report("~p: ~p", [Msg, BadQueueDef]),
+            {stop, Msg}
+    end.
+
 	
 
 %% Closes the channel this gen_server instance started
@@ -355,7 +367,12 @@ try_connect(Configuration, ConnectionRef, ReconnectTime) ->
                                 app_id      = proplists:get_value(app_id, Configuration,
                                                                   list_to_binary(atom_to_list(node()))),
                                 routing_key = proplists:get_value(routing_key, Configuration),
-                                ack = not (proplists:get_value(no_ack, Configuration, false)) },
+                                ack = not (proplists:get_value(no_ack, Configuration, false)),
+                                delivery_mode =
+                                    case proplists:is_defined(persistent, Configuration) of
+                                        false -> 1;
+                                        true -> 2
+                                    end},
           State = setup_queues(InitialState, Configuration),
           setup_consumer(State),
           State;

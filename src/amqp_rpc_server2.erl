@@ -36,7 +36,8 @@
 -export([start_link/3]).
 
 -record(state, {channel, handler,
-                ack = true % should we ack messages?
+                ack = true, % should we ack messages?
+                delivery_mode = 1 % should reply msg persist (2) or not (1)? 
                }).
 -define(MAX_RECONNECT, timer:seconds(30)).
 
@@ -66,11 +67,17 @@ start_link(ConnectionRef, Config, Fun) ->
 %% @private
 init([ConnectionRef, Config, Fun]) ->
     process_flag(trap_exit, true),
-    ReconnectTime = 500,
-	timer:send_after(ReconnectTime, self(),
-                     {reconnect, ConnectionRef, Config, Fun,
-                      min(ReconnectTime * 2, ?MAX_RECONNECT)}),
-	{ok, #state { channel = undefined, handler = Fun }}.
+    case amqp_definitions:verify_config(Config) of
+        ok ->
+            ReconnectTime = 500,
+            timer:send_after(ReconnectTime, self(),
+                            {reconnect, ConnectionRef, Config, Fun,
+                            min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+            {ok, #state { channel = undefined, handler = Fun }};
+        {conflict, Msg, BadQueueDef} ->
+            error_logger:error_report("~p: ~p", [Msg, BadQueueDef]),
+            {stop, Msg}
+    end.
       
 %% @private
 handle_info(shutdown, State) ->
@@ -90,7 +97,7 @@ handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
              #amqp_msg{props = Props, payload = Payload}},
-            State = #state{handler = Fun, channel = Channel, ack = Ack}) ->
+            State = #state{handler = Fun, channel = Channel, ack = Ack, delivery_mode = DeliveryMode}) ->
     #'P_basic'{correlation_id = CorrelationId,
                content_type = ContentType,
                type = Type,
@@ -99,7 +106,8 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
       {reply, Response, CT} ->
         Properties = #'P_basic'{correlation_id = CorrelationId,
                                 content_type = CT,
-                                type = <<"reply">>},
+                                type = <<"reply">>,
+                                delivery_mode = DeliveryMode},
         Publish = #'basic.publish'{exchange = <<>>,
                                    routing_key = Q,
                                    mandatory = true},
@@ -193,13 +201,18 @@ connect(ConnectionRef, Config, Fun) ->
                   Q ->
                       ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>),
                       NoAck = proplists:get_value(no_ack, Config, false),
+                      DeliveryMode = case proplists:is_defined(reply_persistent, Config) of
+                          false -> 1;
+                          true -> 2
+                      end,
                       amqp_channel:register_return_handler(Channel, self()),
                       amqp_channel:call(Channel, #'basic.qos'{prefetch_count = 2}),
                       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
                          queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
-                      #state{channel = Channel, handler = Fun, ack = not NoAck }
+                      #state{channel = Channel, handler = Fun, ack = not NoAck, delivery_mode = DeliveryMode }
               end;
            closing ->
              throw(reconnect)
        end
   end.
+
