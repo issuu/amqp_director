@@ -22,7 +22,10 @@ console:
 	erlc -I deps test/t.erl
 	erl -boot start_sasl -pa ebin deps/*/ebin
 
-test: compile-deps compile common-test
+test: compile-deps compile eunit common-test 
+
+eunit:
+	rebar skip_deps=true eunit
 
 common-test:
 	mkdir -p test_logs

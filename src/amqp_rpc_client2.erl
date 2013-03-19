@@ -227,7 +227,7 @@ init([Configuration, ConnectionRef]) ->
                                                     min(ReconnectTime * 2, ?MAX_RECONNECT)}),
             {ok, #state { channel = undefined }};
         {conflict, Msg, BadQueueDef} ->
-            error_logger:error_report("~p: ~p", [Msg, BadQueueDef]),
+            error_logger:error_msg("~p: ~p", [Msg, BadQueueDef]),
             {stop, Msg}
     end.
 

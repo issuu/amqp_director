@@ -2,6 +2,10 @@
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([inject/2]).
 -export([verify_config/1]).
 
@@ -21,15 +25,82 @@ inject(Channel, [#'exchange.declare'{} = ExchDec | Defns]) ->
 %% @doc Exit in case of persistent messages on non durable queues 
 %% @end
 verify_config(Config) ->
-    case proplists:is_defined(reply_persistent, Config) of
+    case proplists:is_defined(reply_persistent, Config) or proplists:is_defined(persistent, Config) of
         false -> ok;
         true -> 
-            NonDurablePersistentQueues = lists:all(
-                fun(#'queue.declare'{ durable = Durable }) -> Durable end,
+            NonDurableQueuesPersisted = lists:filter(
+                fun(#'queue.declare'{ durable = Durable }) -> not Durable end,
                 [ QDef || QDef <- proplists:get_value(queue_definitions, Config, []), is_record(QDef, 'queue.declare') ]
             ),
-            case NonDurablePersistentQueues of
+            case NonDurableQueuesPersisted of
                 [] -> ok;
-                _ -> {conflict, "non durable persistent queue definition found", NonDurablePersistentQueues}
+                _ -> {conflict, "non durable persistent queue definition found", NonDurableQueuesPersisted}
             end
     end.
+
+
+
+%% Unit tests
+-ifdef(TEST).
+verify_config_test_() ->
+    ServerConfig1 = [
+        {exchange, <<"e">>},
+        {consume_queue, <<"q">>},
+        reply_persistent,
+        {queue_definitions, [
+                #'queue.declare' { queue = <<"q">>, durable = true },
+                #'queue.bind' { exchange = <<"e">>, queue = <<"q">>, routing_key = <<"q">> }
+            ]}
+    ],
+    ServerConfig2 = [
+        {exchange, <<"e">>},
+        {consume_queue, <<"q">>},
+        reply_persistent,
+        {queue_definitions, [
+                #'queue.declare' { queue = <<"q">> },
+                #'queue.bind' { exchange = <<"e">>, queue = <<"q">>, routing_key = <<"q">> }
+            ]}
+    ],
+    ServerConfig3 = [
+        {exchange, <<"e">>},
+        {consume_queue, <<"q">>},
+        {queue_definitions, [
+                #'queue.declare' { queue = <<"q">> },
+                #'queue.bind' { exchange = <<"e">>, queue = <<"q">>, routing_key = <<"q">> }
+            ]}
+    ],
+    ClientConfig1 = [
+        {exchange, <<"e">>},
+        {routing_key, <<"rk">>},
+        persistent,
+        {queue_definitions, [
+                #'queue.declare' { queue = <<"rk">>, durable = true },
+                #'queue.bind' { exchange = <<"e">>, queue = <<"rk">>, routing_key = <<"rk">> }
+            ]}
+    ],
+    ClientConfig2 = [
+        {exchange, <<"e">>},
+        {routing_key, <<"rk">>},
+        persistent,
+        {queue_definitions, [
+                #'queue.declare' { queue = <<"rk">> },
+                #'queue.bind' { exchange = <<"e">>, queue = <<"rk">>, routing_key = <<"rk">> }
+            ]}
+    ],
+    ClientConfig3 = [
+        {exchange, <<"e">>},
+        {routing_key, <<"rk">>},
+        {queue_definitions, [
+                #'queue.declare' { queue = <<"rk">> },
+                #'queue.bind' { exchange = <<"e">>, queue = <<"rk">>, routing_key = <<"rk">> }
+            ]}
+    ],
+    [
+        ?_assertEqual(ok, verify_config(ServerConfig1)),
+        ?_assertEqual(conflict, element(1, verify_config(ServerConfig2))),
+        ?_assertEqual(ok, verify_config(ServerConfig3)),
+        ?_assertEqual(ok, verify_config(ClientConfig1)),
+        ?_assertEqual(conflict, element(1, verify_config(ClientConfig2))),
+        ?_assertEqual(ok, verify_config(ClientConfig3))
+    ].
+-endif.
