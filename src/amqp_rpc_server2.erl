@@ -37,7 +37,7 @@
 
 -record(state, {channel, handler,
                 ack = true, % should we ack messages?
-                delivery_mode = 1 % should reply msg persist (2) or not (1)? 
+                delivery_mode = 1 % should reply msg persist (2) or not (1)?
                }).
 -define(MAX_RECONNECT, timer:seconds(30)).
 
@@ -78,7 +78,7 @@ init([ConnectionRef, Config, Fun]) ->
             error_logger:error_msg("~p: ~p", [Msg, BadQueueDef]),
             {stop, Msg}
     end.
-      
+
 %% @private
 handle_info(shutdown, State) ->
     {stop, normal, State};
@@ -151,7 +151,7 @@ handle_info({'EXIT', Pid, Error}, State) ->
     error_logger:warning_report([amqp_rpc_server_2, {linked_process_abnormal_exit, Pid, Error}]),
     {stop, {linked_process_exit, Error}, State};
 handle_info(Unknown, State) ->
-    error_logger:warning_report([{amqp_rpc_server_2, handle_info}, {unknown, Unknown}]),
+    error_logger:info_report([{amqp_rpc_server_2, handle_info}, {unknown, Unknown}]),
     {noreply, State}.
 
 %% @private
@@ -173,7 +173,7 @@ terminate(_Reason, #state{channel = Channel}) ->
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     State.
-    
+
 %%--------------------------------------------------------------------------
 
 try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
