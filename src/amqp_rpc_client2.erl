@@ -30,7 +30,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/3]).
+-export([start_link/3, await/1, await/2]).
 -export([cast/4, cast/5, call/3, call/4, call/5]).
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2, format_status/2]).
@@ -59,6 +59,24 @@
        ConnRef :: pid().
 start_link(Name, Configuration, ConnRef) ->
     gen_server:start_link({local, Name}, ?MODULE, [Name, Configuration, ConnRef], []).
+
+%% @equiv await(Name, infinity)
+-spec await(Name) -> term()
+  when Name :: atom().
+await(Name) ->
+    gproc:await({n, l, Name}).
+%% @doc Await the connection on a client.
+%% Await that a client has a connection to the server. This can be
+%% used in start-up sequences to ensure that you have a connection. It
+%% can be used to await in complex start-up sequences so you can be
+%% sure there is a connection. The timeout specifies for how long to wait.
+%% @end
+-spec await(Name, Timeout)
+           -> term()
+                  when Name :: atom(),
+                       Timeout :: integer() | 'infinity'.
+await(Name, Timeout) ->
+    gproc:await({n, l, Name}, Timeout).
 
 %% @doc Send a fire-and-forget message to the exchange.
 %% This implements the usual cast operation where a message is forwarded to a queue.
