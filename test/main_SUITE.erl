@@ -42,8 +42,9 @@ end_per_group(_, _Config) ->
 
 -spec init_per_suite(proplists:proplist()) -> proplists:proplist().
 init_per_suite(Config) ->
-	ok = application:start(amqp_client),
-	Config.
+    ok = application:start(gproc),
+    ok = application:start(amqp_client),
+    Config.
 
 -spec end_per_suite(proplists:proplist()) -> 'ok'.
 end_per_suite(_) ->
@@ -61,24 +62,27 @@ end_per_testcase(_Case, _Config) ->
   
 connectivity_test(_Config) ->
     AppId = amqp_director:mk_app_id(client_connection),
-	QConf =
-       [{reply_queue, <<"replyq-", AppId/binary>>},
-        {consumer_tag, <<"my.consumer">>},
-        {app_id, AppId},
-        {routing_key, <<"test_queue_2">>},
-        % {exchange, <<>>}, % This is the default
-        {consume_queue, <<"test_queue_2">>},
-        {queue_definitions, [#'queue.declare' { queue = <<"test_queue_2">>, arguments = [] }]}],
+    QConf =
+        [{reply_queue, <<"replyq-", AppId/binary>>},
+         {consumer_tag, <<"my.consumer">>},
+         {app_id, AppId},
+         {routing_key, <<"test_queue_2">>},
+         %% {exchange, <<>>}, % This is the default
+         {consume_queue, <<"test_queue_2">>},
+         {queue_definitions,
+          [#'queue.declare' { queue = <<"test_queue_2">>, arguments = [] }]}],
     amqp_connect(client_connection, fun f/3, QConf),
-	do_connectivity_work(1000),
-	ok.
+    do_connectivity_work(1000),
+    ok.
 	
 do_connectivity_work(0) -> ok;
 do_connectivity_work(N) ->
-  case amqp_rpc_client2:call(client_connection, <<"Hello.">>, <<"application/x-erlang-term">>) of
+    case amqp_rpc_client2:call(client_connection,
+                               <<"Hello.">>,
+                               <<"application/x-erlang-term">>) of
         {ok, <<"ok.">>, _} -> ok
-  end,
-  do_connectivity_work(N-1).
+    end,
+    do_connectivity_work(N-1).
   
 no_ack_test(_Config) ->
     QArgs = [{<<"x-message-ttl">>, long, 30000},
@@ -117,27 +121,32 @@ do_work(Parent, N) ->
 
 do_work_(0) -> ok;
 do_work_(N) ->
-    case amqp_rpc_client2:call(no_ack_test_client, <<"Hello.">>, <<"application/x-erlang-term">>, 6000) of
+    case amqp_rpc_client2:call(no_ack_test_client,
+                               <<"Hello.">>,
+                               <<"application/x-erlang-term">>, 6000) of
         {ok, <<"ok.">>, _} -> ok
     end,
     do_work_(N-1).
 
 blind_cast_test(_Config) ->
     %% Spawn a RabbitMQ server system:
-	{Host, Port, UN, PW} = ct:get_config(amqp_host),
-	ConnInfo = #amqp_params_network { username = UN, password = PW,
+    {Host, Port, UN, PW} = ct:get_config(amqp_host),
+    ConnInfo = #amqp_params_network { username = UN, password = PW,
                                       host = Host, port = Port },
     AppId = amqp_director:mk_app_id(client_connection_cast),
     QConf =
-       [{reply_queue, none},
-        {app_id, AppId},
-        {routing_key, <<"test_queue">>},
-        {exchange, <<"amq.topic">>},
-        {queue_definitions, [#'queue.declare' { queue = <<"rk_test_queue">> },
-                             #'queue.bind' { queue = <<"rk_test_queue">>, exchange = <<"amq.topic">>,
-                                             routing_key = <<"rk.*">> } ]}],
+        [{reply_queue, none},
+         {app_id, AppId},
+         {routing_key, <<"test_queue">>},
+         {exchange, <<"amq.topic">>},
+         {queue_definitions,
+          [#'queue.declare' { queue = <<"rk_test_queue">> },
+           #'queue.bind' { queue = <<"rk_test_queue">>, exchange = <<"amq.topic">>,
+                           routing_key = <<"rk.*">> } ]}],
     {ok, _CPid} = amqp_client_sup:start_link(client_connection_cast,
-                                             client_connection_cast_mgr, ConnInfo, QConf),
+                                             client_connection_cast_mgr,
+                                             ConnInfo,
+                                             QConf),
     
     %% Set up a consumer hole
     TesterPid = self(),
@@ -146,15 +155,24 @@ blind_cast_test(_Config) ->
           ack
         end,
     {ok, _SPid} = amqp_server_sup:start_link(
-         server_connection_mgr, ConnInfo, [{consume_queue, <<"rk_test_queue">>}], F, 1),
-    timer:sleep(timer:seconds(1)), %% Allow the system to connect
-	amqp_rpc_client2:cast(client_connection_cast, <<"Fire!">>, <<"text/plain">>, <<"event">>),
-	amqp_rpc_client2:cast(client_connection_cast, <<"1">>, <<"text/plain">>, <<"event">>, <<"rk.a">>),
-	amqp_rpc_client2:cast(client_connection_cast, <<"2">>, <<"text/plain">>, <<"event">>, <<"rk.b">>),
+                    server_connection_mgr,
+                    ConnInfo,
+                    [{consume_queue, <<"rk_test_queue">>}], F, 1),
+    %% Await connections
+    amqp_rpc_client2:await(client_connection_cast, 3000),
+    timer:sleep(1000),
+    amqp_rpc_client2:cast(client_connection_cast,
+                          <<"Fire!">>, <<"text/plain">>, <<"event">>),
+    amqp_rpc_client2:cast(client_connection_cast,
+                          <<"1">>, <<"text/plain">>, <<"event">>, <<"rk.a">>),
+    amqp_rpc_client2:cast(client_connection_cast,
+                          <<"2">>, <<"text/plain">>, <<"event">>, <<"rk.b">>),
 	
-	receive {msg, <<"1">>, _, _} -> ok after 1000 -> ct:fail("Incorrect Receive") end,
-	receive {msg, <<"2">>, _, _} -> ok after 1000 -> ct:fail("Incorrect Receive") end,
-	ok.
+    receive {msg, <<"1">>, _, _} -> ok
+      after 1000 -> ct:fail("Incorrect Receive") end,
+    receive {msg, <<"2">>, _, _} -> ok
+      after 1000 -> ct:fail("Incorrect Receive") end,
+    ok.
   
   
 %% --------------------------------------------------------------------------
@@ -176,6 +194,7 @@ amqp_connect(Name, Fun, QConf) ->
          server_connection_mgr, ConnInfo, QConf, Fun, 5),
     {ok, _CPid} = amqp_client_sup:start_link(Name,
                                              client_connection_mgr, ConnInfo, QConf),
-    
+
+    amqp_rpc_client2:await(Name, 3000),
     timer:sleep(timer:seconds(1)). %% Allow the system to connect
 
