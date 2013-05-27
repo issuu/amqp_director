@@ -58,7 +58,7 @@
        Configuration :: term(),
        ConnRef :: pid().
 start_link(Name, Configuration, ConnRef) ->
-    gen_server:start_link({local, Name}, ?MODULE, [Configuration, ConnRef], []).
+    gen_server:start_link({local, Name}, ?MODULE, [Name, Configuration, ConnRef], []).
 
 %% @doc Send a fire-and-forget message to the exchange.
 %% This implements the usual cast operation where a message is forwarded to a queue.
@@ -218,12 +218,12 @@ publish_cast(Payload, ContentType, Type, RoutingKey,
 
 %% Sets up a reply queue and consumer within an existing channel
 %% @private
-init([Configuration, ConnectionRef]) ->
+init([Name, Configuration, ConnectionRef]) ->
     process_flag(trap_exit, true),
     case amqp_definitions:verify_config(Configuration) of
         ok ->
             ReconnectTime = 500,
-            timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
+            timer:send_after(ReconnectTime, self(), {reconnect, Name, Configuration, ConnectionRef,
                                                     min(ReconnectTime * 2, ?MAX_RECONNECT)}),
             {ok, #state { channel = undefined }};
         {conflict, Msg, BadQueueDef} ->
@@ -272,8 +272,8 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% @private
-handle_info({reconnect, Configuration, CRef, ReconnectTime}, #state { channel = undefined }) ->
-    {noreply, try_connect(Configuration, CRef, ReconnectTime)};
+handle_info({reconnect, Name, Configuration, CRef, ReconnectTime}, #state { channel = undefined }) ->
+    {noreply, try_connect(Name, Configuration, CRef, ReconnectTime)};
 handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
     error_logger:info_msg("Channel ~p going down... stopping", [Channel]),
@@ -357,28 +357,29 @@ format_status(_, [_Pdict, #state { continuations = Conts,
 handle_reply_code(313) -> {error, no_consumers};
 handle_reply_code(N) when is_integer(N) -> {error, {reply_code, N}}.
 
-try_connect(Configuration, ConnectionRef, ReconnectTime) ->
-	case amqp_connection_mgr:fetch(ConnectionRef) of
-	    {ok, Connection} ->
-	      {ok, Channel} = amqp_connection:open_channel(Connection, {amqp_direct_consumer, [self()]}),
-          erlang:monitor(process, Channel),
-          InitialState = #state{channel     = Channel,
-                                exchange    = proplists:get_value(exchange, Configuration, <<>>),
-                                app_id      = proplists:get_value(app_id, Configuration,
-                                                                  list_to_binary(atom_to_list(node()))),
-                                routing_key = proplists:get_value(routing_key, Configuration),
-                                ack = not (proplists:get_value(no_ack, Configuration, false)),
-                                delivery_mode =
-                                    case proplists:is_defined(persistent, Configuration) of
-                                        false -> 1;
-                                        true -> 2
-                                    end},
-          State = setup_queues(InitialState, Configuration),
-          setup_consumer(State),
-          State;
+try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
+    case amqp_connection_mgr:fetch(ConnectionRef) of
+        {ok, Connection} ->
+            {ok, Channel} = amqp_connection:open_channel(Connection, {amqp_direct_consumer, [self()]}),
+            erlang:monitor(process, Channel),
+            InitialState = #state{channel     = Channel,
+                                  exchange    = proplists:get_value(exchange, Configuration, <<>>),
+                                  app_id      = proplists:get_value(app_id, Configuration,
+                                                                    list_to_binary(atom_to_list(node()))),
+                                  routing_key = proplists:get_value(routing_key, Configuration),
+                                  ack = not (proplists:get_value(no_ack, Configuration, false)),
+                                  delivery_mode =
+                                      case proplists:is_defined(persistent, Configuration) of
+                                          false -> 1;
+                                          true -> 2
+                                      end},
+            State = setup_queues(InitialState, Configuration),
+            setup_consumer(State),
+            gproc:add_local_name(Name),
+            State;
         {error, econnrefused} ->
           error_logger:info_msg("RPC Client has no working channel, waiting"),
-          timer:send_after(ReconnectTime, self(), {reconnect, Configuration, ConnectionRef,
+          timer:send_after(ReconnectTime, self(), {reconnect, Name, Configuration, ConnectionRef,
                                                               min(ReconnectTime * 2, ?MAX_RECONNECT)}),
           #state { channel = undefined }
       end.
