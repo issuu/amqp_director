@@ -187,6 +187,12 @@ try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
         #state { channel = undefined, handler = Fun }
   end.
 
+qos_configuration(Config) ->
+    case proplists:get_value(qos, Config) of
+        undefined -> #'basic.qos'{prefetch_count = 2};
+        Qos -> Qos
+    end.
+
 connect(ConnectionRef, Config, Fun) ->
   case amqp_connection_mgr:fetch(ConnectionRef) of
     {error, econnrefused} -> throw(reconnect);
@@ -206,7 +212,7 @@ connect(ConnectionRef, Config, Fun) ->
                           true -> 2
                       end,
                       amqp_channel:register_return_handler(Channel, self()),
-                      amqp_channel:call(Channel, #'basic.qos'{prefetch_count = 2}),
+                      amqp_channel:call(Channel, qos_configuration(Config)),
                       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
                          queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
                       #state{channel = Channel, handler = Fun, ack = not NoAck, delivery_mode = DeliveryMode }
