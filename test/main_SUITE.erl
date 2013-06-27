@@ -96,6 +96,7 @@ no_ack_test(_Config) ->
         {routing_key, <<"test_queue">>},
         % {exchange, <<>>}, % This is the default
         {consume_queue, <<"test_queue">>},
+        {qos, #'basic.qos' { prefetch_count = 80 }},
         {queue_definitions, [#'queue.declare' { queue = <<"test_queue">>,
                                                 arguments = QArgs }]}],
 
@@ -191,7 +192,7 @@ amqp_connect(Name, Fun, QConf) ->
 	ConnInfo = #amqp_params_network { username = UN, password = PW,
                                       host = Host, port = Port },
     {ok, _SPid} = amqp_server_sup:start_link(
-         server_connection_mgr, ConnInfo, QConf, Fun, 5),
+         server_connection_mgr, ConnInfo, QConf, Fun, 10),
     {ok, _CPid} = amqp_client_sup:start_link(Name,
                                              client_connection_mgr, ConnInfo, QConf),
 
