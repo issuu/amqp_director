@@ -8,7 +8,7 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 %% API
--export([start_link/4]).
+-export([start_link/4, start_link_ad/4]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -33,14 +33,20 @@
        ConnInfo :: #amqp_params_network{},
        ClientConfig :: list({atom(), term()}).
 start_link(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
-    supervisor:start_link(?MODULE, [EndPoint, ConnReg, ConnInfo, ClientConfig]).
+    supervisor:start_link(?MODULE, [amqp_rpc_client2,
+                                    EndPoint, ConnReg, ConnInfo, ClientConfig]).
+
+%% @doc A Variant that starts an ad_client
+%% @end
+start_link_ad(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
+    supervisor:start_link(?MODULE, [ad_client,
+                                    EndPoint, ConnReg, ConnInfo, ClientConfig]).
 
 %% ===================================================================
 
-init([EndPoint, ConnReg, ConnInfo, ClientConfig]) ->
-	Connection = {connection, {amqp_connection_mgr, start_link, [ConnReg, ConnInfo]},
-	               permanent, 5000, worker, [amqp_connection_mgr]},
-	Client = {client, {amqp_rpc_client2, start_link, [EndPoint, ClientConfig , ConnReg]},
-	           permanent, 5000, worker, [amqp_rpc_client2]},
-	%% 10 times in an hour is the current death rate which is allowed.
+init([Type, EndPoint, ConnReg, ConnInfo, ClientConfig]) ->
+    Connection = {connection, {amqp_connection_mgr, start_link, [ConnReg, ConnInfo]},
+                  permanent, 5000, worker, [amqp_connection_mgr]},
+    Client = {client, {amqp_rpc_client2, start_link, [EndPoint, ClientConfig , ConnReg]},
+              permanent, 5000, worker, [amqp_rpc_client2]},
     {ok, { {one_for_all, 5, 3600}, [Connection, Client]} }.

@@ -25,16 +25,18 @@ inject(Channel, [#'exchange.declare'{} = ExchDec | Defns]) ->
 %% @doc Exit in case of persistent messages on non durable queues 
 %% @end
 verify_config(Config) ->
-    case proplists:is_defined(reply_persistent, Config) or proplists:is_defined(persistent, Config) of
+    case proplists:is_defined(reply_persistent, Config) orelse
+         proplists:is_defined(persistent, Config) of
         false -> ok;
         true -> 
-            NonDurableQueuesPersisted = lists:filter(
-                fun(#'queue.declare'{ durable = Durable }) -> not Durable end,
-                [ QDef || QDef <- proplists:get_value(queue_definitions, Config, []), is_record(QDef, 'queue.declare') ]
-            ),
-            case NonDurableQueuesPersisted of
+            Filter = fun(#'queue.declare'{ durable = Durable }) ->
+                             not Durable
+                     end,
+            case [ QDef || #'queue.declare'{} =
+                               QDef <- proplists:get_value(queue_definitions, Config, []),
+                           Filter(QDef) ] of
                 [] -> ok;
-                _ -> {conflict, "non durable persistent queue definition found", NonDurableQueuesPersisted}
+                _ -> {conflict, "non durable persistent queue definition found", Config}
             end
     end.
 
