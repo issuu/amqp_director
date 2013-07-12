@@ -47,6 +47,6 @@ start_link_ad(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
 init([Type, EndPoint, ConnReg, ConnInfo, ClientConfig]) ->
     Connection = {connection, {amqp_connection_mgr, start_link, [ConnReg, ConnInfo]},
                   permanent, 5000, worker, [amqp_connection_mgr]},
-    Client = {client, {amqp_rpc_client2, start_link, [EndPoint, ClientConfig , ConnReg]},
+    Client = {client, {Type, start_link, [EndPoint, ClientConfig , ConnReg]},
               permanent, 5000, worker, [amqp_rpc_client2]},
     {ok, { {one_for_all, 5, 3600}, [Connection, Client]} }.
