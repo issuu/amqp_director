@@ -124,7 +124,7 @@ do_work_(N) ->
                         <<>>,
                         <<"test_queue">>,
                         <<"Hello.">>,
-                        <<"application/x-erlang-term">>, 6000) of
+                        <<"application/x-erlang-term">>, [{timeout, 6000}]) of
         {ok, <<"ok.">>, _} -> ok
     end,
     do_work_(N-1).

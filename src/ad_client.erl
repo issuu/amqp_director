@@ -34,7 +34,7 @@
 -export([start_link/3, await/1, await/2]).
 
 %% Operational API
--export([cast/6, call/5, call/6]).
+-export([cast/6, cast/7, call/5, call/6]).
 
 %% Callback API
 -export([init/1, terminate/2, code_change/3, handle_call/3,
@@ -44,7 +44,6 @@
                 reply_queue,
                 app_id,
                 ack = true, % Should we ack messages?
-                delivery_mode = 1, % should reply msg persist (2) or not (1)? 
                 continuations = dict:new(),
                 monitors = dict:new(),
                 correlation_id = 0}).
@@ -80,25 +79,31 @@ await(Name) -> gproc:await({n, l, Name}).
        Result :: term().
 await(Name, Timeout) -> gproc:await({n, l, Name}, Timeout).
 
+%% @equiv cast(Client, Exch, Rk, Payload, Type, ContentType, [])
+cast(RpcClient, Exchange, RoutingKey, Payload, Type, ContentType) ->
+    cast(RpcClient, Exchange, RoutingKey, Payload, Type, ContentType, []).
+
 %% @doc Send a fire-and-forget message to the exchange.
 %% This implements the usual cast operation where a message is forwarded to a queue.
 %% Note that there is *no* guarantee that the message will be sent. In particular,
 %% if the queue is down, the message will be lost. You also have to supply a ContentType
 %% as well as a message type for the system.
 %% @end
--spec cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type) -> ok
+-spec cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) -> ok
   when RpcClient :: atom() | pid(),
        Exchange :: binary(),
        RoutingKey :: binary(),
        Payload :: binary(),
        ContentType :: binary(),
-       Type :: binary().
-cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type) ->
-  gen_server:cast(RpcClient, {cast, Exchange, RoutingKey, Payload, ContentType, Type}).
+       Type :: binary(),
+       Options :: [atom() | {atom(), term()}].
+cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) ->
+    Durability = proplists:get_value(persistent, Options, transient),
+    gen_server:cast(RpcClient, {cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability}).
 
 %% @equiv call(RpcClient, Payload, ContentType, 5000)
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
-    call(RpcClient, Exchange, RoutingKey, Payload, ContentType, 5000).
+    call(RpcClient, Exchange, RoutingKey, Payload, ContentType, [{timeout, 5000}]).
 
 %% @doc Invokes an RPC.
 %% Note the caller of this function is responsible for
@@ -107,19 +112,21 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
 %% the message (essentially the mime type). The `Type' of the message will always
 %% be set to `request'.
 %% @end
--spec call(RpcClient, Exchange, RoutingKey, Request, ContentType, Timeout) ->
+-spec call(RpcClient, Exchange, RoutingKey, Request, ContentType, Options) ->
       {ok, Payload, ContentType} | {error, Reason}
   when RpcClient :: atom() | pid(),
        Exchange :: binary(),
        RoutingKey :: binary(),
        Request :: binary(),
        ContentType :: binary(),
-       Timeout :: pos_integer(),
+       Options :: [{atom(), term()} | atom()],
        Payload :: binary(),
        ContentType :: binary(),
        Reason :: term().
-call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Timeout) ->
-    gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType}, Timeout).
+call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
+    Timeout = proplists:get_value(timeout, Options, infinity),
+    Durability = proplists:get_value(persistent, Options, transient),
+    gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout).
 
 %%--------------------------------------------------------------------------
 
@@ -152,8 +159,8 @@ handle_call(_Msg, _From, #state { channel = undefined } = State) ->
     {reply, {error, no_connection}, State};
 handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
     {reply, {error, no_call_configuration}, State};
-handle_call({call, Exchange, RoutingKey, Payload, ContentType}, From, #state {} = State) ->
-    {ok, NewState} = publish(Payload, ContentType, From, Exchange, RoutingKey, State),
+handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability}, From, #state {} = State) ->
+    {ok, NewState} = publish(Payload, ContentType, From, Exchange, RoutingKey, Durability, State),
     {noreply, NewState}.
 
 %% @private
@@ -162,9 +169,9 @@ handle_cast({cast, _Payload, _ContentType, _Type}, #state { channel = undefined 
     %% don't know the caller
     error_logger:info_msg("Throwing away message for an undefined channel."),
     {noreply, State};
-handle_cast({cast, Exchange, RoutingKey, Payload, ContentType, Type},
+handle_cast({cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability},
             #state {} = State) ->
-    publish_cast(Payload, Exchange, RoutingKey, ContentType, Type, State),
+    publish_cast(Payload, Exchange, RoutingKey, ContentType, Type, Durability, State),
     {noreply, State}.
 
 %% @private
@@ -284,8 +291,8 @@ setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
 %% the correlation id and increments the correlationid for
 %% the next request
 publish(Payload, ContentType, {Pid, _Tag} = From, Exchange, RoutingKey,
+        Durability,
         State = #state{channel = Channel,
-                       delivery_mode = DeliveryMode,
                        reply_queue = Q,
                        correlation_id = CorrelationId,
                        app_id = AppId,
@@ -297,7 +304,10 @@ publish(Payload, ContentType, {Pid, _Tag} = From, Exchange, RoutingKey,
                        type = <<"request">>,
                        app_id = AppId,
                        reply_to = Q,
-                       delivery_mode = DeliveryMode},
+                       delivery_mode = case Durability of
+                                           persistent -> 2;
+                                           transient -> 1
+                                       end},
     %% Set Message options:
     %% Setting mandatory means that there must be a routable target queue
     %%  through the exchange. If no such queue exist, an error is returned out
@@ -315,13 +325,16 @@ publish(Payload, ContentType, {Pid, _Tag} = From, Exchange, RoutingKey,
 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, Exchange, RoutingKey, ContentType, Type,
+             Durability,
              #state { channel = Channel,
-                      delivery_mode = DeliveryMode,
                       app_id = AppId }) ->
     Props = #'P_basic'{content_type = ContentType,
                        type = Type,
                        app_id = AppId,
-                       delivery_mode = DeliveryMode},
+                       delivery_mode = case Durability of
+                                           transient -> 1;
+                                           persistent -> 2
+                                       end},
     Publish = #'basic.publish'{exchange = Exchange,
                                routing_key = RoutingKey,
                                mandatory = false},
@@ -343,12 +356,7 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
                 #state{channel     = Channel,
                        app_id      = proplists:get_value(app_id, Configuration,
                                                          list_to_binary(atom_to_list(node()))),
-                       ack = not (proplists:get_value(no_ack, Configuration, false)),
-                       delivery_mode =
-                           case proplists:is_defined(persistent, Configuration) of
-                               false -> 1;
-                               true -> 2
-                           end},
+                       ack = not (proplists:get_value(no_ack, Configuration, false))},
             State = setup_amqp_state(InitialState, Configuration),
             setup_consumer(State),
             gproc:add_local_name(Name),
