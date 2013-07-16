@@ -98,7 +98,7 @@ cast(RpcClient, Exchange, RoutingKey, Payload, Type, ContentType) ->
        Type :: binary(),
        Options :: [atom() | {atom(), term()}].
 cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) ->
-    Durability = proplists:get_value(persistent, Options, transient),
+    Durability = decode_durability(Options),
     gen_server:cast(RpcClient, {cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability}).
 
 %% @equiv call(RpcClient, Payload, ContentType, 5000)
@@ -125,7 +125,7 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
        Reason :: term().
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, infinity),
-    Durability = proplists:get_value(persistent, Options, transient),
+    Durability = decode_durability(Options),
     gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout).
 
 %%--------------------------------------------------------------------------
@@ -305,8 +305,8 @@ publish(Payload, ContentType, {Pid, _Tag} = From, Exchange, RoutingKey,
                        app_id = AppId,
                        reply_to = Q,
                        delivery_mode = case Durability of
-                                           persistent -> 2;
-                                           transient -> 1
+                                           transient -> 1;
+                                           persistent -> 2
                                        end},
     %% Set Message options:
     %% Setting mandatory means that there must be a routable target queue
@@ -374,3 +374,10 @@ handle_ack(true, Channel, DeliveryTag) ->
     amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
 handle_ack(false, _Channel, _DeliveryTag) -> ok.
 
+decode_durability(Options) ->
+    case proplists:get_value(persistent, Options, false) of
+        true -> persistent;
+        false -> transient
+    end.
+
+             

@@ -104,7 +104,7 @@ no_ack_test(_Config) ->
 
 do_no_ack_work() ->
     Parent = self(),
-    Pids = [spawn_link(fun () -> do_work(Parent, 10) end) || _ <- lists:seq(1, 10000)],
+    Pids = [spawn_link(fun () -> do_work(Parent, 10) end) || _ <- lists:seq(1, 100)],
     collect(Pids).
 
 collect([]) ->
@@ -141,7 +141,7 @@ blind_cast_test(_Config) ->
          {routing_key, <<"test_queue">>},
          {exchange, <<"amq.topic">>},
          {queue_definitions,
-          [#'queue.declare' { queue = <<"rk_test_queue">> },
+          [#'queue.declare' { queue = <<"rk_test_queue">>, durable = true },
            #'queue.bind' { queue = <<"rk_test_queue">>, exchange = <<"amq.topic">>,
                            routing_key = <<"rk.*">> } ]}],
     {ok, _CPid} = amqp_client_sup:start_link_ad(client_connection_cast,
@@ -164,15 +164,15 @@ blind_cast_test(_Config) ->
     ad_client:cast(client_connection_cast,
                    <<"amq.topic">>,
                    <<"test_queue">>,
-                   <<"Fire!">>, <<"text/plain">>, <<"event">>),
+                   <<"Fire!">>, <<"text/plain">>, <<"event">>, [persistent]),
     ad_client:cast(client_connection_cast,
                    <<"amq.topic">>,
                    <<"rk.a">>,
-                   <<"1">>, <<"text/plain">>, <<"event">>),
+                   <<"1">>, <<"text/plain">>, <<"event">>, [persistent]),
     ad_client:cast(client_connection_cast,
                    <<"amq.topic">>,
                    <<"rk.b">>,
-                   <<"2">>, <<"text/plain">>, <<"event">>),
+                   <<"2">>, <<"text/plain">>, <<"event">>, [persistent]),
 	
     receive {msg, <<"1">>, _, _} -> ok
       after 1000 -> ct:fail("Incorrect Receive") end,
