@@ -66,6 +66,7 @@ try_connect(Configuration, ConnectionRef) ->
     case amqp_connection_mgr:fetch(ConnectionRef) of
         {ok, Connection} ->
             {ok, Channel} = amqp_connection:open_channel(Connection, {amqp_direct_consumer, [self()]}),
+            amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Configuration, [])),
             AppId = proplists:get_value(app_id, Configuration, list_to_binary(atom_to_list(node()))),
             #state{channel = Channel, app_id  = AppId};
         {error, econnrefused} ->
