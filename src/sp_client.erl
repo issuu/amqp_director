@@ -42,7 +42,7 @@ init([_Name, Configuration, ConnectionRef]) ->
 handle_call({pull, Queue}, _From, State) ->
     Get = #'basic.get'{queue = Queue, no_ack = true},
     Reply = case amqp_channel:call(State#state.channel, Get) of
-        {#'basic.get_ok'{}, Payload} -> {ok, Payload};
+        {#'basic.get_ok'{}, #amqp_msg{payload = Payload}} -> {ok, Payload};
         #'basic.get_empty'{} -> empty
     end,
     {reply, Reply, State}.
