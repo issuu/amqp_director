@@ -39,12 +39,13 @@ init([_Name, Configuration, ConnectionRef]) ->
     timer:send_after(?RECONNECT_TIME, self(), {reconnect, Configuration, ConnectionRef}),
     {ok, #state{channel = undefined}}.
 
-handle_call({pull, Queue}, _From, #state{channel = Channel}) ->
+handle_call({pull, Queue}, _From, State) ->
     Get = #'basic.get'{queue = Queue, no_ack = true},
-    case amqp_channel:call(Channel, Get) of
+    Reply = case amqp_channel:call(State#state.channel, Get) of
         {#'basic.get_ok'{}, Payload} -> {ok, Payload};
         #'basic.get_empty'{} -> empty
-    end.
+    end,
+    {reply, Reply, State}.
 
 handle_cast(_Request, State) -> {noreply, State}. % Not used
     
