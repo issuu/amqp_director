@@ -8,7 +8,7 @@
 -behaviour(gen_server).
 
 % External API
--export([pull/1]).
+-export([pull/2]).
 
 %% Lifetime API
 -export([start_link/3]).
@@ -27,9 +27,9 @@
 
 -define(RECONNECT_TIME, 5000).
 
--spec pull(binary()) -> {ok, binary()} | empty.
-pull(Queue) ->
-    gen_server:call({pull, Queue}).
+-spec pull(atom(), binary()) -> {ok, binary()} | empty.
+pull(PullClient, Queue) ->
+    gen_server:call(PullClient, {pull, Queue}).
     
 -spec start_link(atom(), term(), pid()) -> {ok, pid()}.
 start_link(Name, Configuration, ConnRef) ->
