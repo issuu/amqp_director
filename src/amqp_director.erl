@@ -5,6 +5,7 @@
 %% Lifetime API
 -export([
          ad_client_child_spec/3,
+         sp_client_child_spec/3,
          client_child_spec/3,
          mk_app_id/1,
          parse_connection_parameters/1,
@@ -30,6 +31,11 @@ server_child_spec(Name, Fun, ConnInfo, ServersCount, Config) ->
 ad_client_child_spec(Name, ConnInfo, Config) ->
     ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
     {Name, {amqp_client_sup, start_link_ad, [Name, ConnReg, ConnInfo, Config]},
+     permanent, infinity, supervisor, [amqp_client_sup]}.
+
+sp_client_child_spec(Name, ConnInfo, Config) ->
+    ConnReg = list_to_atom(atom_to_list(Name) ++ "_conn"),
+    {Name, {amqp_client_sup, start_link_sp, [Name, ConnReg, ConnInfo, Config]},
      permanent, infinity, supervisor, [amqp_client_sup]}.
 
 client_child_spec(Name, ConnInfo, Config) ->

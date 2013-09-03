@@ -8,7 +8,7 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 %% API
--export([start_link/4, start_link_ad/4]).
+-export([start_link/4, start_link_ad/4, start_link_sp/4]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -40,6 +40,12 @@ start_link(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
 %% @end
 start_link_ad(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
     supervisor:start_link(?MODULE, [ad_client,
+                                    EndPoint, ConnReg, ConnInfo, ClientConfig]).
+
+%% @doc A Variant that starts an sp_client
+%% @end
+start_link_sp(EndPoint, ConnReg, ConnInfo, ClientConfig) ->
+    supervisor:start_link(?MODULE, [sp_client,
                                     EndPoint, ConnReg, ConnInfo, ClientConfig]).
 
 %% ===================================================================
