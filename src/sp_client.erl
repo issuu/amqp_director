@@ -9,7 +9,8 @@
 
 % External API
 -export([pull/2,
-         get_queue_attributes/2]).
+         get_queue_attributes/2,
+         purge/2]).
 
 %% Lifetime API
 -export([start_link/3]).
@@ -36,6 +37,10 @@ pull(PullClient, Queue) ->
 get_queue_attributes(PullClient, Queue) ->
     gen_server:call(PullClient, {get_queue_attributes, Queue}).
     
+-spec purge(atom(), binary()) -> {ok, integer()}.
+purge(PullClient, Queue) ->
+    gen_server:call(PullClient, {purge, Queue}).
+
 -spec start_link(atom(), term(), pid()) -> {ok, pid()}.
 start_link(Name, Configuration, ConnRef) ->
     gen_server:start_link({local, Name}, ?MODULE, [Name, Configuration, ConnRef], []).
@@ -54,7 +59,11 @@ handle_call({pull, Queue}, _From, State) ->
 handle_call({get_queue_attributes, Queue}, _From, State) ->
     Declare = #'queue.declare'{queue = Queue, passive = true},
     #'queue.declare_ok'{message_count = MCount, consumer_count = CCount} = amqp_channel:call(State#state.channel, Declare),
-    {reply, {ok, MCount, CCount}, State}.
+    {reply, {ok, MCount, CCount}, State};
+handle_call({purge, Queue}, _From, State) ->
+    Purge = #'queue.purge'{queue = Queue},
+    #'queue.purge_ok'{message_count = Count} = amqp_channel:call(State#state.channel, Purge),
+    {reply, {ok, Count}, State}.
 
 handle_cast(_Request, State) -> {noreply, State}. % Not used
     
