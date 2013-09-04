@@ -8,7 +8,8 @@
 -behaviour(gen_server).
 
 % External API
--export([pull/2]).
+-export([pull/2,
+         get_queue_attributes/2]).
 
 %% Lifetime API
 -export([start_link/3]).
@@ -30,6 +31,10 @@
 -spec pull(atom(), binary()) -> {ok, binary()} | empty.
 pull(PullClient, Queue) ->
     gen_server:call(PullClient, {pull, Queue}).
+
+-spec get_queue_attributes(atom(), binary()) -> {ok, integer(), integer()}.
+get_queue_attributes(PullClient, Queue) ->
+    gen_server:call(PullClient, {get_queue_attributes, Queue}).
     
 -spec start_link(atom(), term(), pid()) -> {ok, pid()}.
 start_link(Name, Configuration, ConnRef) ->
@@ -45,7 +50,11 @@ handle_call({pull, Queue}, _From, State) ->
         {#'basic.get_ok'{}, #amqp_msg{payload = Payload}} -> {ok, Payload};
         #'basic.get_empty'{} -> empty
     end,
-    {reply, Reply, State}.
+    {reply, Reply, State};
+handle_call({get_queue_attributes, Queue}, _From, State) ->
+    Declare = #'queue.declare'{queue = Queue, passive = true},
+    #'queue.declare_ok'{message_count = MCount, consumer_count = CCount} = amqp_channel:call(State#state.channel, Declare),
+    {reply, {ok, MCount, CCount}, State}.
 
 handle_cast(_Request, State) -> {noreply, State}. % Not used
     
