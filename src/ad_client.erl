@@ -40,13 +40,14 @@
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2, format_status/2]).
 
--record(state, {channel,
-                reply_queue,
-                app_id,
-                ack = true, % Should we ack messages?
-                continuations = dict:new(),
-                monitors = dict:new(),
-                correlation_id = 0}).
+-record(state, {channel :: pid(),
+                reply_queue :: atom(),
+                app_id :: binary(),
+                ack = true :: boolean(), % Should we ack messages?
+                continuations = dict:new() :: dict(),
+                monitors = dict:new() :: dict(),
+                correlation_id = 0 :: integer()
+               }).
 
 -define(MAX_RECONNECT, timer:seconds(30)).
 
@@ -129,6 +130,9 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout).
 
 %% lcall/6 is a error-monad-lifted variant of call
+%% NOTE: lcall/6 might leak messages. It is the responsibility of the client to clean out messages
+%% it does not know about once in a while of the form `{ad_client_reply, _, _}'. The window is
+%% quite small, but it might happen in practice.
 -spec lcall(RpcClient, Exchange, RoutingKey, Request, ContentType, Options) ->
       {ok, Payload, ContentType} | {error, Reason}
   when RpcClient :: atom() | pid(),
