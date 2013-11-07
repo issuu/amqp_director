@@ -8,3 +8,4 @@ scrap
 *.plt
 test_logs
 *.DS_Store
+dialyzer.out
