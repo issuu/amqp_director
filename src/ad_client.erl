@@ -193,7 +193,7 @@ handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
 handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability}, From, #state {} = State) ->
     {ok, _Mref, NewState} = publish_call(Payload, ContentType, {sync, From}, Exchange, RoutingKey, Durability, State),
     {noreply, NewState};
-handle_call({lcall, Exchange, RoutingKey, Payload, ContentType, Durability}, {Pid, _Tag}, #state {} = State) ->
+handle_call({async_call, Exchange, RoutingKey, Payload, ContentType, Durability}, {Pid, _Tag}, #state {} = State) ->
     {ok, MRef, NewState} = publish_call(Payload, ContentType, {async, Pid}, Exchange, RoutingKey, Durability, State),
     {reply, MRef, NewState}.
 
@@ -340,7 +340,7 @@ setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
 %% the next request
-publish_call(Payload, ContentType, {_Sync, {Pid, _Tag}} = Source, Exchange, RoutingKey,
+publish_call(Payload, ContentType, {_Sync, From} = Source, Exchange, RoutingKey,
         Durability,
         State = #state{channel = Channel,
                        monitors = Monitors,
@@ -353,6 +353,10 @@ publish_call(Payload, ContentType, {_Sync, {Pid, _Tag}} = Source, Exchange, Rout
                                mandatory = true},
     Msg = #amqp_msg { props = Props, payload = Payload },
     ok = amqp_channel:cast(Channel, Publish, Msg),
+    Pid = case From of
+              {P, _Tag} -> P;
+              P when is_pid(P) -> P
+          end,
     Ref = erlang:monitor(process, Pid),
     Conts =
       case Source of
