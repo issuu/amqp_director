@@ -34,7 +34,7 @@
 -export([start_link/3, await/1, await/2]).
 
 %% Operational API
--export([cast/6, cast/7, call/5, call/6, lcall/6]).
+-export([cast/6, cast/7, call/5, call/6, lcall/5, lcall/6]).
 
 %% Callback API
 -export([init/1, terminate/2, code_change/3, handle_call/3,
@@ -128,6 +128,9 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, infinity),
     Durability = decode_durability(Options),
     gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout).
+
+lcall(Client, Exchange, RK, Payload, CT) ->
+    lcall(Client, Exchange, RK, Payload, CT, [{timeout, 5000}]).
 
 %% lcall/6 is a error-monad-lifted variant of call
 %% NOTE: lcall/6 might leak messages. It is the responsibility of the client to clean out messages
