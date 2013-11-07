@@ -382,7 +382,7 @@ p_basic(ContentType, Type, Durability, Corr, #state { reply_queue = Q, app_id = 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, Exchange, RoutingKey, ContentType, Type,
              Durability,
-             State = #state { channel = Channel, app_id = AppId }) ->
+             #state { channel = Channel, app_id = AppId }) ->
     Props = #'P_basic'{content_type = ContentType,
                        type = Type,
                        app_id = AppId,
