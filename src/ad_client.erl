@@ -199,7 +199,20 @@ handle_cast({cast, _Payload, _ContentType, _Type}, #state { channel = undefined 
 handle_cast({cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability},
             #state {} = State) ->
     publish_cast(Payload, Exchange, RoutingKey, ContentType, Type, Durability, State),
-    {noreply, State}.
+    {noreply, State};
+handle_cast({cancel, MRef}, #state{ continuations = Continuations, monitors = Monitors } = State) ->
+    %% A client cancelled message receipt
+    case dict:find(MRef, Monitors) of
+        error ->
+            %% Stray monitor. Might happen if message was delivered in between a cancel
+            %% and this place.
+            {noreply, State};
+        {ok, Id} ->
+            %% Remove the Id as we don't want it anymore
+            {noreply, State#state { continuations = dict:erase(Id, Continuations),
+                                    monitors      = dict:erase(MRef, Monitors) }}
+    end.
+    
 
 %% @private
 %% Reconnectinons
