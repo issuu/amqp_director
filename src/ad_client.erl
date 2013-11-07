@@ -184,8 +184,11 @@ handle_call(_Msg, _From, #state { channel = undefined } = State) ->
 handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
     {reply, {error, no_call_configuration}, State};
 handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability}, From, #state {} = State) ->
-    {ok, NewState} = publish(Payload, ContentType, From, Exchange, RoutingKey, Durability, State),
-    {noreply, NewState}.
+    {ok, _Mref, NewState} = publish_call(Payload, ContentType, {sync, From}, Exchange, RoutingKey, Durability, State),
+    {noreply, NewState};
+handle_call({lcall, Exchange, RoutingKey, Payload, ContentType, Durability}, {Pid, _Tag}, #state {} = State) ->
+    {ok, MRef, NewState} = publish_call(Payload, ContentType, {async, Pid}, Exchange, RoutingKey, Durability, State),
+    {reply, MRef, NewState}.
 
 %% @private
 handle_cast({cast, _Payload, _ContentType, _Type}, #state { channel = undefined } = State) ->
@@ -234,9 +237,9 @@ handle_info({#'basic.return' { reply_code = ReplyCode },
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
-        {ok, {From, MonitorRef}} ->
+        {ok, {Source, From, MonitorRef}} ->
             erlang:demonitor(MonitorRef),
-            gen_server:reply(From, handle_reply_code(ReplyCode)),
+            reply(Source, From, MonitorRef, handle_reply_code(ReplyCode)),
             {noreply, State#state { continuations = dict:erase(CorrelationIdBin, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end;
@@ -254,12 +257,15 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
-        {ok, {From, MonitorRef}} ->
+        {ok, {Source, From, MonitorRef}} ->
              erlang:demonitor(MonitorRef),
-             gen_server:reply(From, {ok, Payload, ContentType}),
+             reply(Source, From, MonitorRef, {ok, Payload, ContentType}),
              {noreply, State#state{ continuations = dict:erase(CorrelationIdBin, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end.
+
+reply(sync, From, _MRef, Msg) -> gen_server:reply(From, Msg);
+reply(async, Pid, MRef, Msg) -> Pid ! {ad_client_reply, MRef, Msg}.
 
 %% @private
 code_change(_OldVsn, State, _Extra) ->
@@ -314,51 +320,50 @@ setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
 %% the next request
-publish(Payload, ContentType, {Pid, _Tag} = From, Exchange, RoutingKey,
+publish_call(Payload, ContentType, {_Sync, {Pid, _Tag}} = Source, Exchange, RoutingKey,
         Durability,
         State = #state{channel = Channel,
-                       reply_queue = Q,
-                       correlation_id = CorrelationId,
-                       app_id = AppId,
                        monitors = Monitors,
+                       correlation_id = CorrelationId,
                        continuations = Continuations}) ->
-    CorrelationIdBin = list_to_binary(integer_to_list(CorrelationId)),
-    Props = #'P_basic'{correlation_id = CorrelationIdBin,
-                       content_type = ContentType,
-                       type = <<"request">>,
-                       app_id = AppId,
-                       reply_to = Q,
-                       delivery_mode = case Durability of
-                                           transient -> 1;
-                                           persistent -> 2
-                                       end},
-    %% Set Message options:
-    %% Setting mandatory means that there must be a routable target queue
-    %%  through the exchange. If no such queue exist, an error is returned out
-    %%  of band and processed by the return handler.
+    Corr = list_to_binary(integer_to_list(CorrelationId)),
+    Props = p_basic(ContentType, <<"request">>, Durability, Corr, State),
     Publish = #'basic.publish'{exchange = Exchange,
                                routing_key = RoutingKey,
-                               mandatory = true },
-    ok = amqp_channel:cast(Channel, Publish, #amqp_msg{ props = Props,
-                                                        payload = Payload }),
+                               mandatory = true},
+    Msg = #amqp_msg { props = Props, payload = Payload },
+    ok = amqp_channel:cast(Channel, Publish, Msg),
     Ref = erlang:monitor(process, Pid),
-    {ok,
-      State#state{correlation_id = CorrelationId + 1,
-                  continuations = dict:store(CorrelationIdBin, {From, Ref}, Continuations),
-                  monitors = dict:store(Ref, CorrelationIdBin, Monitors)}}.
+    Conts =
+      case Source of
+        {sync, F} -> dict:store(Corr, {sync, F, Ref}, Continuations);
+        {async, F} -> dict:store(Corr, {async, F, Ref}, Continuations)
+      end,
+    {ok, Ref,
+         State#state{
+             correlation_id = CorrelationId + 1,
+             continuations = Conts,
+             monitors = dict:store(Ref, Corr, Monitors)}}.
+
+%% delivery_mode/1 encodes the on-wire delivery mode
+delivery_mode(transient) -> 1;
+delivery_mode(persistent) -> 2.
+
+%% p_basic/5 transforms a State into the basic properties
+p_basic(ContentType, Type, Durability, Corr, #state { reply_queue = Q, app_id = AppId}) ->
+    #'P_basic'{
+        correlation_id = Corr,
+        content_type = ContentType,
+        type = Type,
+        app_id = AppId,
+        reply_to = Q,
+        delivery_mode = delivery_mode(Durability)}.
 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, Exchange, RoutingKey, ContentType, Type,
              Durability,
-             #state { channel = Channel,
-                      app_id = AppId }) ->
-    Props = #'P_basic'{content_type = ContentType,
-                       type = Type,
-                       app_id = AppId,
-                       delivery_mode = case Durability of
-                                           transient -> 1;
-                                           persistent -> 2
-                                       end},
+             State = #state { channel = Channel }) ->
+    Props = p_basic(ContentType, Type, Durability, undefined, State),
     Publish = #'basic.publish'{exchange = Exchange,
                                routing_key = RoutingKey,
                                mandatory = false},
