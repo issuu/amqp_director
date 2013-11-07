@@ -34,7 +34,7 @@
 -export([start_link/3, await/1, await/2]).
 
 %% Operational API
--export([cast/6, cast/7, call/5, call/6]).
+-export([cast/6, cast/7, call/5, call/6, lcall/6]).
 
 %% Callback API
 -export([init/1, terminate/2, code_change/3, handle_call/3,
@@ -127,6 +127,30 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, infinity),
     Durability = decode_durability(Options),
     gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout).
+
+%% lcall/6 is a error-monad-lifted variant of call
+-spec lcall(RpcClient, Exchange, RoutingKey, Request, ContentType, Options) ->
+      {ok, Payload, ContentType} | {error, Reason}
+  when RpcClient :: atom() | pid(),
+       Exchange :: binary(),
+       RoutingKey :: binary(),
+       Request :: binary(),
+       ContentType :: binary(),
+       Options :: [{atom(), term()} | atom()],
+       Payload :: binary(),
+       ContentType :: binary(),
+       Reason :: term().
+lcall(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
+    Timeout = proplists:get_value(timeout, Options, 5000), % This defaults to 5 seconds timeouts
+    Durability = decode_durability(Options),
+    MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout),
+    receive
+        {ad_client_reply, MRef, Result} ->
+            Result
+    after Timeout ->
+        gen_server:cast(RpcClient, {cancel, MRef}),
+        {error, timeout}
+    end.
 
 %%--------------------------------------------------------------------------
 
