@@ -9,7 +9,7 @@
 -export([blind_cast_test/1,
          connectivity_test/1,
          no_ack_test/1,
-         lcall_timeout_test/1]).
+         call_timeout_timeout_test/1]).
          
 -include_lib("common_test/include/ct.hrl").
 -include_lib("amqp_client/include/amqp_client.hrl").
@@ -28,7 +28,7 @@ groups() ->
         [connectivity_test,
          no_ack_test,
          blind_cast_test,
-         lcall_timeout_test]}].
+         call_timeout_timeout_test]}].
 
 -spec all() -> proplists:proplist().
 all() ->
@@ -86,7 +86,7 @@ do_connectivity_work(N) when N > 100 ->
     end,
     do_connectivity_work(N-1);
 do_connectivity_work(N) ->
-    case ad_client:lcall(client_connection,
+    case ad_client:call_timeout(client_connection,
                         <<>>,
                         <<"test_queue_2">>,
                         <<"Hello.">>,
@@ -140,7 +140,7 @@ do_work_(N) ->
     end,
     do_work_(N-1).
 
-lcall_timeout_test(_Config) ->
+call_timeout_timeout_test(_Config) ->
     QArgs = [{<<"x-message-ttl">>, long, 30000},
              {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
     AppId = amqp_director:mk_app_id(client_connection),
@@ -149,18 +149,18 @@ lcall_timeout_test(_Config) ->
         no_ack,
         {consumer_tag, <<"my.consumer">>},
         {app_id, AppId},
-        {consume_queue, <<"test_queue_lcall">>},
+        {consume_queue, <<"test_queue_call_timeout">>},
         {qos, #'basic.qos' { prefetch_count = 80 }},
-        {queue_definitions, [#'queue.declare' { queue = <<"test_queue_lcall">>,
+        {queue_definitions, [#'queue.declare' { queue = <<"test_queue_call_timeout">>,
                                                 arguments = QArgs },
-                                            #'queue.declare' { queue = <<"test_queue_lcall_no_response">>,
+                                            #'queue.declare' { queue = <<"test_queue_call_timeout_no_response">>,
                                                 arguments = QArgs }]}],
 
-    amqp_connect(lcall_test, fun f/3, QConf),
+    amqp_connect(call_timeout_test, fun f/3, QConf),
     
-    {error, timeout} = ad_client:lcall(lcall_test,
+    {error, timeout} = ad_client:call_timeout(call_timeout_test,
                         <<>>,
-                        <<"test_queue_lcall_no_response">>,
+                        <<"test_queue_call_timeout_no_response">>,
                         <<"Hello.">>,
                         <<"application/x-erlang-term">>,
                         [{timeout, 300}]),
