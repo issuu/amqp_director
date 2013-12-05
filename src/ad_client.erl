@@ -418,7 +418,6 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
             gproc:add_local_name(Name),
             State;
         {error, econnrefused} ->
-            lager:warning("RPC Client has no working channel, waiting"),
             timer:send_after(ReconnectTime,
                              self(),
                              {reconnect, Name, Configuration, ConnectionRef,

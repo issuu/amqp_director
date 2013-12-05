@@ -177,7 +177,7 @@ try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
         connect(ConnectionRef, Config, Fun)
     catch
      throw:reconnect ->
-        %% No need to throw here. Connection management handles this
+        %% No need to log here. Connection management handles this
         timer:send_after(ReconnectTime, self(),
                          {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
         #state { channel = undefined, handler = Fun }
