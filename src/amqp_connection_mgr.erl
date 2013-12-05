@@ -81,12 +81,11 @@ handle_cast(_Msg, State) ->
 
 %% @private
 handle_info({'DOWN', _, process, _ConnPid, Reason}, #state { info = Info } = State) ->
-    error_logger:info_msg("Connection ~p going down: ~p", [Info, Reason]),
+    lager:notice("Connection ~p going down: ~p", [Info, Reason]),
     {stop, Reason, State};
 handle_info({reconnect, ReconnectTime}, #state { conn = {error, _}} = State) ->
    {noreply, try_connect(State, ReconnectTime)};
 handle_info(Info, State) ->
-   error_logger:info_msg("Unknown: handle_info(~p, ~p)", [Info, State]),
    {noreply, State}.
 
 %% @private
@@ -101,7 +100,7 @@ try_connect(#state { info = ConnInfo } = State, ReconnectTime) ->
         erlang:monitor(process, Connection),
         State#state { conn = Connection };
       {error, econnrefused} ->
-        error_logger:error_msg("Connection refused to AMQP, waiting a bit"),
+        lager:warning("Connection refused to AMQP, waiting a bit"),
         timer:send_after(ReconnectTime, self(), {reconnect, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
         State#state { conn = {error, econnrefused} }
     end.

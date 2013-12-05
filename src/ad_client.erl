@@ -173,7 +173,7 @@ init([Name, Configuration, ConnectionRef]) ->
                               min(ReconnectTime * 2, ?MAX_RECONNECT)}),
             {ok, #state { channel = undefined }};
         {conflict, Msg, BadQueueDef} ->
-            error_logger:error_msg("~p: ~p", [Msg, BadQueueDef]),
+            lager:alert("Bad queue conflict: ~p: ~p", [Msg, BadQueueDef]),
             {stop, Msg}
     end.
 
@@ -201,7 +201,7 @@ handle_call({async_call, Exchange, RoutingKey, Payload, ContentType, Durability}
 handle_cast({cast, _Payload, _ContentType, _Type}, #state { channel = undefined } = State) ->
     %% We can't do anything but throw away the message here, as we
     %% don't know the caller
-    error_logger:info_msg("Throwing away message for an undefined channel."),
+    lager:notice("Throwing away message for an undefined channel."),
     {noreply, State};
 handle_cast({cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability},
             #state {} = State) ->
@@ -229,7 +229,7 @@ handle_info({reconnect, Name, Configuration, CRef, ReconnectTime},
 %% Monitor 'DOWN' messages for dead clients or connections
 handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
-    error_logger:info_msg("Channel ~p going down... stopping", [Channel]),
+    lager:info("Channel ~p going down... stopping", [Channel]),
     {stop, {error, {channel_down, Reason}}, State#state{ channel = undefined }};
 handle_info({'DOWN', MRef, process, _Pid, _Reason},
             #state { continuations = Continuations,
@@ -418,7 +418,7 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
             gproc:add_local_name(Name),
             State;
         {error, econnrefused} ->
-            error_logger:info_msg("RPC Client has no working channel, waiting"),
+            lager:warning("RPC Client has no working channel, waiting"),
             timer:send_after(ReconnectTime,
                              self(),
                              {reconnect, Name, Configuration, ConnectionRef,

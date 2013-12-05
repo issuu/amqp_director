@@ -89,7 +89,6 @@ try_connect(Configuration, ConnectionRef) ->
             AppId = proplists:get_value(app_id, Configuration, list_to_binary(atom_to_list(node()))),
             #state{channel = Channel, app_id  = AppId};
         {error, econnrefused} ->
-            error_logger:info_msg("RPC Client has no working channel, waiting"),
             timer:send_after(?RECONNECT_TIME, self(), {reconnect, Configuration, ConnectionRef}),
             #state{channel = undefined}
     end.

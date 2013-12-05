@@ -75,7 +75,7 @@ init([ConnectionRef, Config, Fun]) ->
                             min(ReconnectTime * 2, ?MAX_RECONNECT)}),
             {ok, #state { channel = undefined, handler = Fun }};
         {conflict, Msg, BadQueueDef} ->
-            error_logger:error_msg("~p: ~p", [Msg, BadQueueDef]),
+            lager:alert("Bad queue [.. ~p: ~p ..]", [Msg, BadQueueDef]),
             {stop, Msg}
     end.
 
@@ -85,7 +85,6 @@ handle_info(shutdown, State) ->
 
 %% @private
 handle_info({reconnect, CRef, Config, Fun, ReconnectTime}, #state { channel = undefined }) ->
-	error_logger:info_report([trying_to_reconnect]),
     {noreply, try_connect(CRef, Config, Fun, ReconnectTime)};
 handle_info({#'basic.consume'{}, _}, State) ->
     {noreply, State};
@@ -121,13 +120,13 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = true}),
         {noreply, State};
       reject when not Ack ->
-        error_logger:warning_msg("reject wanted, but channel set to no-ack"),
+        lager:notice("reject wanted, but channel set to no-ack"),
         {noreply, State};
       reject_no_requeue when Ack ->
         amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
         {noreply, State};
       reject_no_requeue when not Ack ->
-        error_logger:warning_msg("reject_no_requeue wanted, but channel set to no-ack"),
+        lager:notice("reject_no_requeue wanted, but channel set to no-ack"),
         {noreply, State};
       ack when Ack ->
         amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
@@ -136,11 +135,10 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         {noreply, State} % Ignore acks here
     end;
 handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
-    error_logger:info_msg("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
+    lager:notice("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
     {noreply, State};
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
-    error_logger:info_msg("Closing down due to channel going down: ~p", [Reason]),
-	{stop, Reason, State#state{ channel = undefined }};
+    {stop, Reason, State#state{ channel = undefined }};
 handle_info({'EXIT', _Pid, normal}, State) ->
     %% Since we trap exits, normally exiting processes will yell in the log, quell them.
     {noreply, State};
@@ -148,10 +146,8 @@ handle_info({'EXIT', _Pid, shutdown}, State) ->
     %% Shutdowns are also normal exit reasons, quell them.
     {noreply, State};
 handle_info({'EXIT', Pid, Error}, State) ->
-    error_logger:warning_report([amqp_rpc_server_2, {linked_process_abnormal_exit, Pid, Error}]),
     {stop, {linked_process_exit, Error}, State};
 handle_info(Unknown, State) ->
-    error_logger:info_report([{amqp_rpc_server_2, handle_info}, {unknown, Unknown}]),
     {noreply, State}.
 
 %% @private
@@ -181,7 +177,7 @@ try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
         connect(ConnectionRef, Config, Fun)
     catch
      throw:reconnect ->
-        error_logger:error_report([no_connection]),
+        %% No need to throw here. Connection management handles this
         timer:send_after(ReconnectTime, self(),
                          {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
         #state { channel = undefined, handler = Fun }
