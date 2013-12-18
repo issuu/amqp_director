@@ -85,7 +85,7 @@ handle_info({'DOWN', _, process, _ConnPid, Reason}, #state { info = Info } = Sta
     {stop, Reason, State};
 handle_info({reconnect, ReconnectTime}, #state { conn = {error, _}} = State) ->
    {noreply, try_connect(State, ReconnectTime)};
-handle_info(Info, State) ->
+handle_info(_Info, State) ->
    {noreply, State}.
 
 %% @private
