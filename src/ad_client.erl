@@ -397,6 +397,7 @@ publish_cast(Payload, Exchange, RoutingKey, ContentType, Type,
     amqp_channel:cast(Channel, Publish, #amqp_msg { props = Props,
                                                     payload = Payload }).
 
+handle_reply_code(312) -> {error, no_route};
 handle_reply_code(313) -> {error, no_consumers};
 handle_reply_code(N) when is_integer(N) -> {error, {reply_code, N}}.
 
