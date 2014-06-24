@@ -100,7 +100,11 @@ cast(RpcClient, Exchange, RoutingKey, Payload, Type, ContentType) ->
        Options :: [atom() | {atom(), term()}].
 cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) ->
     Durability = decode_durability(Options),
-    gen_server:cast(RpcClient, {cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability}).
+    case valid_options(Payload) of
+        ok ->
+            gen_server:cast(RpcClient, {cast, Exchange, RoutingKey, Payload, ContentType, Type, Durability});
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @equiv call(RpcClient, Payload, ContentType, 5000)
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
@@ -127,7 +131,12 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, infinity),
     Durability = decode_durability(Options),
-    gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout).
+    case valid_options(Payload) of
+        ok ->
+            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 call_timeout(Client, Exchange, RK, Payload, CT) ->
     call_timeout(Client, Exchange, RK, Payload, CT, [{timeout, 5000}]).
@@ -150,14 +159,19 @@ call_timeout(Client, Exchange, RK, Payload, CT) ->
 call_timeout(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, 5000), % This defaults to 5 seconds timeouts
     Durability = decode_durability(Options),
-    MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout),
-    receive
-        {ad_client_reply, MRef, Result} ->
-            Result
-    after Timeout ->
-        gen_server:cast(RpcClient, {cancel, MRef}),
-        {error, timeout}
-    end.
+    case valid_options(Payload) of
+        ok ->
+            MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout),
+            receive
+                {ad_client_reply, MRef, Result} ->
+                    Result
+            after Timeout ->
+                gen_server:cast(RpcClient, {cancel, MRef}),
+                {error, timeout}
+            end;
+       {error, Reason} ->
+           {error, Reason}
+   end.
 
 %%--------------------------------------------------------------------------
 
@@ -437,3 +451,5 @@ decode_durability(Options) ->
     end.
 
              
+valid_options(Payload) when is_binary(Payload) -> ok;
+valid_options(_Payload) -> {error, badarg}.
