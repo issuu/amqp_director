@@ -95,7 +95,7 @@ handle_info(#'basic.cancel'{}, State) ->
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
-             #amqp_msg{props = Props, payload = Payload}},
+             #amqp_msg{props = Props, payload = Payload}} = InfoMsg,
             State = #state{handler = Fun, channel = Channel, ack = Ack, delivery_mode = DeliveryMode}) ->
     #'P_basic'{correlation_id = CorrelationId,
                content_type = ContentType,
@@ -128,6 +128,13 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
       reject_no_requeue when not Ack ->
         lager:notice("reject_no_requeue wanted, but channel set to no-ack"),
         {noreply, State};
+      {reject_dump_msg, Msg} when Ack ->
+        amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
+        lager:error("Error AMQP message rejected due to ~p: ~p", [Msg, format_delivery(InfoMsg)]),
+        {noreply, State};
+      {reject_dump_msg, Msg} when not Ack ->
+        lager:error("Error AMQP message rejected due to ~p: ~p", [Msg, format_delivery(InfoMsg)]),
+        {noreply, State};
       ack when Ack ->
         amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
         {noreply, State};
@@ -145,9 +152,9 @@ handle_info({'EXIT', _Pid, normal}, State) ->
 handle_info({'EXIT', _Pid, shutdown}, State) ->
     %% Shutdowns are also normal exit reasons, quell them.
     {noreply, State};
-handle_info({'EXIT', Pid, Error}, State) ->
+handle_info({'EXIT', _Pid, Error}, State) ->
     {stop, {linked_process_exit, Error}, State};
-handle_info(Unknown, State) ->
+handle_info(_Unknown, State) ->
     {noreply, State}.
 
 %% @private
@@ -218,3 +225,8 @@ connect(ConnectionRef, Config, Fun) ->
        end
   end.
 
+format_delivery({BasicDeliver, #amqp_msg{ payload = Payload } = AmqpMsg}) ->
+    Sz = byte_size(Payload),
+    PayloadSz = iolist_to_binary([<<"Payload of ">>, integer_to_binary(Sz), <<" bytes">>]),
+    {BasicDeliver, AmqpMsg#amqp_msg { payload = PayloadSz }}.
+    
