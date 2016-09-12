@@ -44,8 +44,8 @@
                 reply_queue :: atom(),
                 app_id :: binary(),
                 ack = true :: boolean(), % Should we ack messages?
-                continuations = dict:new() :: dict(),
-                monitors = dict:new() :: dict(),
+                continuations = dict:new() :: dict:dict(),
+                monitors = dict:new() :: dict:dict(),
                 correlation_id = 0 :: integer()
                }).
 
