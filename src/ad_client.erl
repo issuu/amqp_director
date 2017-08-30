@@ -133,7 +133,7 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Durability = decode_durability(Options),
     case valid_options(Payload) of
         ok ->
-            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout);
+            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, Timeout);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -161,7 +161,7 @@ call_timeout(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Durability = decode_durability(Options),
     case valid_options(Payload) of
         ok ->
-            MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability}, Timeout),
+            MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, Timeout),
             receive
                 {ad_client_reply, MRef, Result} ->
                     Result
@@ -204,11 +204,11 @@ handle_call(_Msg, _From, #state { channel = undefined } = State) ->
     {reply, {error, no_connection}, State};
 handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
     {reply, {error, no_call_configuration}, State};
-handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability}, From, #state {} = State) ->
-    {ok, _Mref, NewState} = publish_call(Payload, ContentType, {sync, From}, Exchange, RoutingKey, Durability, State),
+handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, From, #state {} = State) ->
+    {ok, _Mref, NewState} = publish_call(Payload, ContentType, {sync, From}, Exchange, RoutingKey, Durability, Timeout, State),
     {noreply, NewState};
-handle_call({async_call, Exchange, RoutingKey, Payload, ContentType, Durability}, {Pid, _Tag}, #state {} = State) ->
-    {ok, MRef, NewState} = publish_call(Payload, ContentType, {async, Pid}, Exchange, RoutingKey, Durability, State),
+handle_call({async_call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, {Pid, _Tag}, #state {} = State) ->
+    {ok, MRef, NewState} = publish_call(Payload, ContentType, {async, Pid}, Exchange, RoutingKey, Durability, Timeout, State),
     {reply, MRef, NewState}.
 
 %% @private
@@ -356,12 +356,13 @@ setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
 %% the next request
 publish_call(Payload, ContentType, {_Sync, From} = Source, Exchange, RoutingKey,
         Durability,
+	Timeout,
         State = #state{channel = Channel,
                        monitors = Monitors,
                        correlation_id = CorrelationId,
                        continuations = Continuations}) ->
     Corr = list_to_binary(integer_to_list(CorrelationId)),
-    Props = p_basic(ContentType, <<"request">>, Durability, Corr, State),
+    Props = p_basic(ContentType, <<"request">>, Durability, Corr, Timeout, State),
     Publish = #'basic.publish'{exchange = Exchange,
                                routing_key = RoutingKey,
                                mandatory = true},
@@ -387,15 +388,24 @@ publish_call(Payload, ContentType, {_Sync, From} = Source, Exchange, RoutingKey,
 delivery_mode(transient) -> 1;
 delivery_mode(persistent) -> 2.
 
-%% p_basic/5 transforms a State into the basic properties
-p_basic(ContentType, Type, Durability, Corr, #state { reply_queue = Q, app_id = AppId}) ->
+%% p_basic/6 transforms a State into the basic properties
+p_basic(ContentType, Type, Durability, Corr, infinity, #state { reply_queue = Q, app_id = AppId }) ->
     #'P_basic'{
         correlation_id = Corr,
         content_type = ContentType,
         type = Type,
         app_id = AppId,
         reply_to = Q,
-        delivery_mode = delivery_mode(Durability)}.
+        delivery_mode = delivery_mode(Durability)};
+p_basic(ContentType, Type, Durability, Corr, Timeout, #state { reply_queue = Q, app_id = AppId }) ->
+    #'P_basic'{
+        correlation_id = Corr,
+        content_type = ContentType,
+        type = Type,
+        app_id = AppId,
+        reply_to = Q,
+        delivery_mode = delivery_mode(Durability),
+        expiration = list_to_binary(integer_to_list(Timeout))}.
 
 %% Publish on a queue in a fire-n-forget fashion.
 publish_cast(Payload, Exchange, RoutingKey, ContentType, Type,
