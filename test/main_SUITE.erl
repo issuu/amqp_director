@@ -8,6 +8,7 @@
 
 -export([blind_cast_test/1,
          connectivity_test/1,
+         connectivity_test_raw/1,
          no_ack_test/1,
          call_timeout_timeout_test/1]).
          
@@ -26,6 +27,7 @@ suite() ->
 groups() ->
     [{integration_test_group, [],
         [connectivity_test,
+         connectivity_test_raw,
          no_ack_test,
          blind_cast_test,
          call_timeout_timeout_test]}].
@@ -74,7 +76,21 @@ connectivity_test(_Config) ->
     amqp_connect(client_connection, fun f/3, QConf),
     do_connectivity_work(1000),
     ok.
-	
+
+connectivity_test_raw(_Config) ->
+    AppId = amqp_director:mk_app_id(client_connection),
+    QConf =
+        [{reply_queue, <<"replyq-", AppId/binary>>},
+         {consumer_tag, <<"my.consumer">>},
+         {app_id, AppId},
+         {consume_queue, <<"test_queue_2">>},
+         {queue_definitions,
+          [#'queue.declare' { queue = <<"test_queue_2">>, arguments = [] }]}],
+    amqp_connect(client_connection, fun f/1, QConf),
+    do_connectivity_work(1000),
+    ok.
+
+
 do_connectivity_work(0) -> ok;
 do_connectivity_work(N) when N > 100 ->
     case ad_client:call(client_connection,
@@ -225,6 +241,10 @@ blind_cast_test(_Config) ->
     ContentType :: binary(),
     Type :: binary().
 f(<<"Hello.">>, _ContentType, _Type) ->
+    {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
+
+-spec f({#'basic.deliver'{}, #amqp_msg{}}) -> {reply, binary(), binary()} | ack | reject | reject_no_requeue.
+f({#'basic.deliver'{}, #amqp_msg{ payload = <<"Hello.">> }}) ->
     {reply, <<"ok.">>, <<"application/x-erlang-term">>}.
 
 %% Standard connection to the RabbitMQ broker
