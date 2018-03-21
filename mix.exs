@@ -14,16 +14,17 @@ defmodule AmqpDirector.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      applications: [:gproc, :lager, :amqp_client]
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:amqp_client, "~> 3.6.12"},
+      {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
+      {:amqp_client, "~> 3.7.4"},
       {:gproc, "~> 0.6.1"},
-      {:lager, "~> 3.5.2"}
+      {:lager, "~> 3.6", override: true}
     ]
   end
 end

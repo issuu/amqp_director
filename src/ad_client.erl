@@ -25,6 +25,7 @@
 %% here easily obtains 8000+ reqs/s with this approach.
 %% @end
 -module(ad_client).
+-compile([{parse_transform, lager_transform}]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 

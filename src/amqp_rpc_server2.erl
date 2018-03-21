@@ -26,8 +26,9 @@
 %% supervisor tree.
 %% @end
 -module(amqp_rpc_server2).
-
 -behaviour(gen_server).
+
+-compile([{parse_transform, lager_transform}]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -229,4 +230,3 @@ format_delivery({BasicDeliver, #amqp_msg{ payload = Payload } = AmqpMsg}) ->
     Sz = byte_size(Payload),
     PayloadSz = iolist_to_binary([<<"Payload of ">>, integer_to_binary(Sz), <<" bytes">>]),
     {BasicDeliver, AmqpMsg#amqp_msg { payload = PayloadSz }}.
-    

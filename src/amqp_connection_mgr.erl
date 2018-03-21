@@ -14,6 +14,8 @@
 %%% @end
 -module(amqp_connection_mgr).
 -behaviour(gen_server).
+-compile([{parse_transform, lager_transform}]).
+
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 

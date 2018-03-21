@@ -1,4 +1,5 @@
 -module (amqp_director).
+-compile([{parse_transform, lager_transform}]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -60,4 +61,3 @@ parse_connection_parameters(Props) ->
     _Otherwise ->
       exit({error, parse_connection_parameters})
   end.
-
