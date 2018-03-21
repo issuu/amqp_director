@@ -40,9 +40,9 @@
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2, format_status/2]).
 
--record(state, {channel :: pid(),
+-record(state, {channel :: pid() | undefined,
                 reply_queue :: atom(),
-                app_id :: binary(),
+                app_id :: binary() | undefined,
                 ack = true :: boolean(), % Should we ack messages?
                 continuations = dict:new() :: dict:dict(),
                 monitors = dict:new() :: dict:dict(),
@@ -233,7 +233,7 @@ handle_cast({cancel, MRef}, #state{ continuations = Continuations, monitors = Mo
             {noreply, State#state { continuations = dict:erase(Id, Continuations),
                                     monitors      = dict:erase(MRef, Monitors) }}
     end.
-    
+
 
 %% @private
 %% Reconnectinons
@@ -286,7 +286,7 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
                             channel = Channel,
                             ack = ShouldAck }) ->
     %% Always Ack the response messages, before processing
-    handle_ack(ShouldAck, Channel, DeliveryTag), 
+    handle_ack(ShouldAck, Channel, DeliveryTag),
     case dict:find(CorrelationIdBin, Conts) of
         error ->
             %% Stray message. If the client has timed out, this can happen
@@ -334,7 +334,7 @@ setup_reply_queue(Channel, undefined) ->
                           #'queue.declare' { exclusive = true, auto_delete = true }),
     ReplyQ;
 setup_reply_queue(_Channel, none) -> none;
-setup_reply_queue(Channel, ReplyQ) when is_binary(ReplyQ) -> 
+setup_reply_queue(Channel, ReplyQ) when is_binary(ReplyQ) ->
     #'queue.declare_ok' { queue = ReplyQ } =
         amqp_channel:call(Channel,
                           #'queue.declare' { exclusive = true,
@@ -460,6 +460,6 @@ decode_durability(Options) ->
         false -> transient
     end.
 
-             
+
 valid_options(Payload) when is_binary(Payload) -> ok;
 valid_options(_Payload) -> {error, badarg}.

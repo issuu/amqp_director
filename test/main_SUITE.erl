@@ -10,7 +10,7 @@
          connectivity_test/1,
          no_ack_test/1,
          call_timeout_timeout_test/1]).
-         
+
 -include_lib("common_test/include/ct.hrl").
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -28,7 +28,8 @@ groups() ->
         [connectivity_test,
          no_ack_test,
          blind_cast_test,
-         call_timeout_timeout_test]}].
+         call_timeout_timeout_test
+        ]}].
 
 -spec all() -> proplists:proplist().
 all() ->
@@ -44,8 +45,7 @@ end_per_group(_, _Config) ->
 
 -spec init_per_suite(proplists:proplist()) -> proplists:proplist().
 init_per_suite(Config) ->
-    ok = application:start(gproc),
-    ok = application:start(amqp_client),
+    {ok, _} = application:ensure_all_started(amqp_director),
     Config.
 
 -spec end_per_suite(proplists:proplist()) -> 'ok'.
@@ -61,7 +61,7 @@ end_per_testcase(_Case, _Config) ->
    ok.
 
 %% ----------------------------------------------------------------------
-  
+
 connectivity_test(_Config) ->
     AppId = amqp_director:mk_app_id(client_connection),
     QConf =
@@ -74,7 +74,7 @@ connectivity_test(_Config) ->
     amqp_connect(client_connection, fun f/3, QConf),
     do_connectivity_work(1000),
     ok.
-	
+
 do_connectivity_work(0) -> ok;
 do_connectivity_work(N) when N > 100 ->
     case ad_client:call(client_connection,
@@ -94,7 +94,7 @@ do_connectivity_work(N) ->
         {ok, <<"ok.">>, _} -> ok
     end,
     do_connectivity_work(N-1).
-  
+
 no_ack_test(_Config) ->
     QArgs = [{<<"x-message-ttl">>, long, 30000},
              {<<"x-dead-letter-exchange">>, longstr, <<"dead-letters">>}],
@@ -157,7 +157,7 @@ call_timeout_timeout_test(_Config) ->
                                                 arguments = QArgs }]}],
 
     amqp_connect(call_timeout_test, fun f/3, QConf),
-    
+
     {error, timeout} = ad_client:call_timeout(call_timeout_test,
                         <<>>,
                         <<"test_queue_call_timeout_no_response">>,
@@ -185,7 +185,7 @@ blind_cast_test(_Config) ->
                                                 client_connection_cast_mgr,
                                                 ConnInfo,
                                                 QConf),
-    
+
     %% Set up a consumer hole
     TesterPid = self(),
     F = fun(Msg, CType, Type) ->
@@ -210,14 +210,14 @@ blind_cast_test(_Config) ->
                    <<"amq.topic">>,
                    <<"rk.b">>,
                    <<"2">>, <<"text/plain">>, <<"event">>, [persistent]),
-	
+
     receive {msg, <<"1">>, _, _} -> ok
       after 1000 -> ct:fail("Incorrect Receive") end,
     receive {msg, <<"2">>, _, _} -> ok
       after 1000 -> ct:fail("Incorrect Receive") end,
     ok.
-  
-  
+
+
 %% --------------------------------------------------------------------------
 -spec f(Msg, ContentType, Type) -> {reply, binary(), binary()} | ack | reject | reject_no_requeue
   when
@@ -240,4 +240,3 @@ amqp_connect(Name, Fun, QConf) ->
 
     amqp_rpc_client2:await(Name, 3000),
     timer:sleep(timer:seconds(1)). %% Allow the system to connect
-
