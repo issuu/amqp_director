@@ -4,7 +4,7 @@ defmodule AmqpDirector.MixProject do
   def project do
     [
       app: :amqp_director,
-      version: "0.1.0",
+      version: "1.0.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -24,7 +24,7 @@ defmodule AmqpDirector.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.16", only: :dev, runtime: false},
-      {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
+      {:dialyxir, "~> 0.5", only: :dev, runtime: false},
       {:amqp_client, "~> 3.7.4"},
       {:gproc, "~> 0.6.1"},
       {:lager, "~> 3.6", override: true}
