@@ -12,7 +12,10 @@ clean:
 console:
 	rebar3 shell
 
-test: eunit common-test
+test: exunit eunit common-test
+
+exunit:
+	mix test
 
 eunit:
 	rebar3 eunit
@@ -21,6 +24,8 @@ common-test:
 	rebar3 ct --config ./test/test-local.config
 
 ## Dialyzer stuff follows
-
 dialyzer:
+	mix dialyzer
+
+erl-dialyzer:
 	rebar3 dialyzer
