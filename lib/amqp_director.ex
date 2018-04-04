@@ -159,7 +159,7 @@ defmodule AmqpDirector do
   This function is intended to be using within `:queue_definitions` configuration parameter of a client or a server. See
   `t:client_option/0` or `t:server_option/0` for details.
 
-  Available options are: `:passive`, `:durable`, `:exclusive` and `:auto_delete`. See AMQP specification for details on
+  Available options are: `:passive`, `:durable`, `:exclusive`, `:auto_delete` and `:arguments`. See AMQP specification for details on
   queue declaration.
   """
   @spec queue_declare(String.t, Keyword.t) :: queue_declare
@@ -168,7 +168,8 @@ defmodule AmqpDirector do
     durable = Access.get(params, :durable, false)
     exclusive = Access.get(params, :exclusive, false)
     auto_delete = Access.get(params, :auto_delete, false)
-    AmqpDirector.Queues.queue_declare(queue: name, passive: passive, durable: durable, exclusive: exclusive, auto_delete: auto_delete)
+    arguments = Access.get(params, :arguments, [])
+    AmqpDirector.Queues.queue_declare(queue: name, passive: passive, durable: durable, exclusive: exclusive, auto_delete: auto_delete, arguments: arguments)
   end
 
   @typep queue_bind :: AmqpDirector.Queues.queue_bind
@@ -193,7 +194,7 @@ defmodule AmqpDirector do
   This function is intended to be using within `:queue_definitions` configuration parameter of a client or a server. See
   `t:client_option/0` or `t:server_option/0` for details.
 
-  Available options are: `:passive`, `:durable`, `:auto_delete` and `:internal`. See AMQP specification for details on exchange
+  Available options are: `:passive`, `:durable`, `:auto_delete`, `:internal` and `:arguments`. See AMQP specification for details on exchange
   declaration.
   """
   @spec exchange_declare(String.t, Keyword.t) :: exchange_declare
@@ -203,7 +204,8 @@ defmodule AmqpDirector do
     durable = Keyword.get(params, :durable, false)
     auto_delete = Keyword.get(params, :auto_delete, false)
     internal = Keyword.get(params, :internal, false)
-    AmqpDirector.Queues.exchange_declare(exchange: name, passive: passive, durable: durable, type: type, auto_delete: auto_delete, internal: internal)
+    arguments = Access.get(params, :arguments, [])
+    AmqpDirector.Queues.exchange_declare(exchange: name, passive: passive, durable: durable, type: type, auto_delete: auto_delete, internal: internal, arguments: arguments)
   end
 
 end
