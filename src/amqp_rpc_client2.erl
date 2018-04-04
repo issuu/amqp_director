@@ -24,6 +24,7 @@
 %% but the gen_server run by this process will not. Tests on the local machine
 %% here easily obtains 8000+ reqs/s with this approach.
 %% @end
+%% @hidden
 -module(amqp_rpc_client2).
 
 -include_lib("amqp_client/include/amqp_client.hrl").

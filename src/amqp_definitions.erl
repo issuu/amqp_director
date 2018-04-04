@@ -1,3 +1,4 @@
+%%% @hidden
 -module(amqp_definitions).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
@@ -22,13 +23,13 @@ inject(Channel, [#'exchange.declare'{} = ExchDec | Defns]) ->
 	inject(Channel, Defns).
 
 
-%% @doc Exit in case of persistent messages on non durable queues 
+%% @doc Exit in case of persistent messages on non durable queues
 %% @end
 verify_config(Config) ->
     case proplists:is_defined(reply_persistent, Config) orelse
          proplists:is_defined(persistent, Config) of
         false -> ok;
-        true -> 
+        true ->
             Filter = fun(#'queue.declare'{ durable = Durable }) ->
                              not Durable
                      end,

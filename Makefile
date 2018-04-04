@@ -3,7 +3,7 @@ REPO=amqp_director
 .PHONY: compile clean test eunit common-test dialyzer
 
 compile:
-	rebar3  compile
+	rebar3 compile
 
 clean:
 	rebar3 clean
@@ -18,7 +18,7 @@ eunit:
 	rebar3 eunit
 
 common-test:
-	rebar3 ct --config ./test-local.config
+	rebar3 ct --config ./test/test-local.config
 
 ## Dialyzer stuff follows
 

@@ -2,10 +2,11 @@
 %%%
 %%% This module is a supervisor for the infrastructure which keeps track of
 %%% a pool of AMQP server endpoints together with an AMQP connection. In effect,
-%%% you supply a count of how many workers you want in the pool. Each worker is 
-%%% given a function to execute. Whenever there are messages on the queue, this 
+%%% you supply a count of how many workers you want in the pool. Each worker is
+%%% given a function to execute. Whenever there are messages on the queue, this
 %%% function will be called.
 %%% @end
+%%% @hidden
 -module(amqp_server_sup).
 
 -behaviour(supervisor).

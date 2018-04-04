@@ -25,6 +25,7 @@
 %% Thus the intention is to embed server workers like these in the host application
 %% supervisor tree.
 %% @end
+%% @hidden
 -module(amqp_rpc_server2).
 -behaviour(gen_server).
 
@@ -194,6 +195,7 @@ try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
 qos_configuration(Config) ->
     case proplists:get_value(qos, Config) of
         undefined -> #'basic.qos'{prefetch_count = 2};
+        Qos when is_integer(Qos) -> #'basic.qos'{prefetch_count = Qos};
         Qos -> Qos
     end.
 

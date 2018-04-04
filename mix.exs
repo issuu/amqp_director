@@ -9,7 +9,8 @@ defmodule AmqpDirector.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       dialyzer: [plt_add_deps: :transitive,
-                 flags: [:error_handling, :race_conditions, :underspecs]]
+                 flags: [:error_handling, :race_conditions, :underspecs]],
+      docs: [extras: ["README.md"], main: "readme"]
     ]
   end
 

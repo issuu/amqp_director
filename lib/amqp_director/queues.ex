@@ -32,11 +32,11 @@ defmodule AmqpDirector.Queues do
         arguments: list(term))
 
     @type queue_bind :: record(:'queue.bind',
-        ticket: term,
+        ticket: number,
         queue: String.t,
         exchange: String.t,
         routing_key: String.t,
-        nowait: term,
-        arguments: term)
+        nowait: boolean,
+        arguments: list(term))
 
 end

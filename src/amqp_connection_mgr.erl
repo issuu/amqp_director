@@ -12,6 +12,7 @@
 %%% Essentially this module is a supervisor tree link. It watches over RabbitMQs connections
 %%% and injects a fault into its own supervisor tree whenever the RabbitMQ connection dies.
 %%% @end
+%%% @hidden
 -module(amqp_connection_mgr).
 -behaviour(gen_server).
 -compile([{parse_transform, lager_transform}]).
