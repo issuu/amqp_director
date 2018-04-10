@@ -5,6 +5,7 @@
 %%% on the pool. It is intended to be used to scale out a static worker
 %%% pool of processes so you can get the concurrency level up.
 %%% @end
+%%% @hidden
 -module(amqp_server_pool_sup).
 
 -behaviour(supervisor).

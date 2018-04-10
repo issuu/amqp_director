@@ -24,6 +24,7 @@
 %% but the gen_server run by this process will not. Tests on the local machine
 %% here easily obtains 8000+ reqs/s with this approach.
 %% @end
+%% @hidden
 -module(amqp_rpc_client2).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
@@ -41,7 +42,7 @@
                 exchange,
                 routing_key,
                 ack = true, % Should we ack messages?
-                delivery_mode = 1, % should reply msg persist (2) or not (1)? 
+                delivery_mode = 1, % should reply msg persist (2) or not (1)?
                 continuations = dict:new(),
                 monitors = dict:new(),
                 correlation_id = 0}).
@@ -157,18 +158,20 @@ setup_queues(State = #state{channel = Channel}, Configuration) ->
 
     %% Configuration of the Reply queue:
     RQ = #'queue.declare' { exclusive = true, auto_delete = true },
-    case proplists:get_value(reply_queue, Configuration, undefined) of
-      undefined ->
-          % Set up an no-name reply queue
-          #'queue.declare_ok'{queue = ReplyQ} = amqp_channel:call(Channel, RQ);
-      none ->
-          % No reply queue wanted, do not set up one. Calls won't work.
-          ReplyQ = none;
-      ReplyQ when is_binary(ReplyQ) ->
-          Q = RQ#'queue.declare'{ queue = ReplyQ },
-          #'queue.declare_ok' { queue = ReplyQ } = amqp_channel:call(Channel, Q)
-    end,
-    State#state{reply_queue = ReplyQ}.
+    ReplyQueue = case proplists:get_value(reply_queue, Configuration, undefined) of
+                    undefined ->
+                        % Set up an no-name reply queue
+                        #'queue.declare_ok'{queue = ReplyQ} = amqp_channel:call(Channel, RQ),
+                        ReplyQ;
+                    none ->
+                        % No reply queue wanted, do not set up one. Calls won't work.
+                        none;
+                    ReplyQ when is_binary(ReplyQ) ->
+                        Q = RQ#'queue.declare'{ queue = ReplyQ },
+                        #'queue.declare_ok' { queue = ReplyQ } = amqp_channel:call(Channel, Q),
+                        ReplyQ
+                end,
+    State#state{reply_queue = ReplyQueue}.
 
 %% Registers this RPC client instance as a consumer to handle rpc responses
 setup_consumer(#state{channel = _Channel, reply_queue = none}) ->
@@ -231,7 +234,7 @@ publish_cast(Payload, ContentType, Type, RoutingKey,
                                mandatory = false},
     amqp_channel:cast(Channel, Publish, #amqp_msg { props = Props,
                                                     payload = Payload }).
-                                                    
+
 %%--------------------------------------------------------------------------
 
 %% Sets up a reply queue and consumer within an existing channel
@@ -249,7 +252,7 @@ init([Name, Configuration, ConnectionRef]) ->
             {stop, Msg}
     end.
 
-	
+
 
 %% Closes the channel this gen_server instance started
 %% @private
@@ -353,7 +356,7 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
              {noreply, State#state{ continuations = dict:erase(CorrelationIdBin, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end.
-    
+
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     State.
@@ -369,9 +372,9 @@ format_status(_, [_Pdict, #state { continuations = Conts,
           {channel, Channel},
           {routing_key, RoutingKey}],
     {data, [{"State", St}]}.
-     
+
 %%--------------------------------------------------------------------------
-    
+
 handle_reply_code(313) -> {error, no_consumers};
 handle_reply_code(N) when is_integer(N) -> {error, {reply_code, N}}.
 

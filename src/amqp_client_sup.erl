@@ -1,6 +1,7 @@
 %%% @doc Track an RPC client endpoint
 %%% This supervisor will maintain an AMQP Rpc client endpoint and keep it running
 %%% @end
+%%% @hidden
 -module(amqp_client_sup).
 
 -behaviour(supervisor).

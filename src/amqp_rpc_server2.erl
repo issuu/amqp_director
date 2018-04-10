@@ -25,9 +25,11 @@
 %% Thus the intention is to embed server workers like these in the host application
 %% supervisor tree.
 %% @end
+%% @hidden
 -module(amqp_rpc_server2).
-
 -behaviour(gen_server).
+
+-compile([{parse_transform, lager_transform}]).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 
@@ -193,6 +195,7 @@ try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
 qos_configuration(Config) ->
     case proplists:get_value(qos, Config) of
         undefined -> #'basic.qos'{prefetch_count = 2};
+        Qos when is_integer(Qos) -> #'basic.qos'{prefetch_count = Qos};
         Qos -> Qos
     end.
 
@@ -229,4 +232,3 @@ format_delivery({BasicDeliver, #amqp_msg{ payload = Payload } = AmqpMsg}) ->
     Sz = byte_size(Payload),
     PayloadSz = iolist_to_binary([<<"Payload of ">>, integer_to_binary(Sz), <<" bytes">>]),
     {BasicDeliver, AmqpMsg#amqp_msg { payload = PayloadSz }}.
-    
