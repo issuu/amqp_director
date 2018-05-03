@@ -8,9 +8,11 @@ defmodule AmqpDirector.MixProject do
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      package: package(),
       dialyzer: [plt_add_deps: :transitive,
                  flags: [:error_handling, :race_conditions, :underspecs]],
-      docs: [extras: ["README.md"], main: "readme"]
+      docs: [extras: ["README.md"], main: "readme"],
+      source_url: "https://github.com/issuu/amqp_director"
     ]
   end
 
@@ -28,7 +30,7 @@ defmodule AmqpDirector.MixProject do
       {:dialyxir, "~> 0.5", only: :dev, runtime: false},
       {:amqp_client, "~> 3.7.4"},
       {:gproc, "~> 0.6.1"},
-      {:lager, "~> 3.6", override: true}
+      {:lager, "~> 3.5.1"}
     ]
   end
 
