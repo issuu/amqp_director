@@ -39,7 +39,6 @@ defmodule AmqpDirector.MixProject do
     [
       files: ["lib", "src", "mix.exs", "rebar.config", "config", "README*", "LICENSE*"],
       maintainers: ["Issuu"],
-      organization: "issuu",
       licenses: ["Apache 2.0"],
       links: %{"GitHub" => "https://github.com/issuu/amqp_director"}
     ]
