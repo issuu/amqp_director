@@ -4,6 +4,7 @@ defmodule AmqpDirector.MixProject do
   def project do
     [
       app: :amqp_director,
+      description: "A simplistic embeddable RPC Client/Server library for AMQP/RabbitMQ.",
       version: "1.0.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
@@ -36,7 +37,7 @@ defmodule AmqpDirector.MixProject do
 
   defp package() do
     [
-      files: ["lib", "src", "mix.exs", "rebar.config", "config", "README*", "readme*", "LICENSE*", "license*"],
+      files: ["lib", "src", "mix.exs", "rebar.config", "config", "README*", "LICENSE*"],
       maintainers: ["Issuu"],
       organization: "issuu",
       licenses: ["Apache 2.0"],
