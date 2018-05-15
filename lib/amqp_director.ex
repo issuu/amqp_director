@@ -107,7 +107,7 @@ defmodule AmqpDirector do
 
   The server handles reconnecting by itself.
   """
-  @spec server_child_spec(atom, handler, list(connection_option), non_neg_integer, list(server_option)) :: :supervisor.child_spec
+  @spec server_child_spec(atom, handler, list(connection_option), non_neg_integer, list(server_option)) :: Supervisor.child_spec
   def server_child_spec(name, handler, connectionInfo, count, config) do
     connectionInfo
     |> Keyword.update!(:host, &String.to_charlist/1)
@@ -125,7 +125,7 @@ defmodule AmqpDirector do
 
   The client handles reconnecting by itself.
   """
-  @spec client_child_spec(atom, list(connection_option), list(client_option)) :: :supervisor.child_spec
+  @spec client_child_spec(atom, list(connection_option), list(client_option)) :: Supervisor.child_spec
   def client_child_spec(name,  connectionInfo, config) do
     connectionInfo
     |> Keyword.update!(:host, &String.to_charlist/1)
@@ -144,7 +144,7 @@ defmodule AmqpDirector do
 
   The client handles reconnecting by itself.
   """
-  @spec pull_client_child_spec(atom, list(connection_option), list(pull_client_option)) :: :supervisor.child_spec
+  @spec pull_client_child_spec(atom, list(connection_option), list(pull_client_option)) :: Supervisor.child_spec
   def pull_client_child_spec(name,  connectionInfo, config) do
     connectionInfo
     |> Keyword.update!(:host, &String.to_charlist/1)
