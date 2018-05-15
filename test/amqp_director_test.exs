@@ -17,8 +17,8 @@ defmodule AmqpDirectorTest do
       ]
     )
 
-    assert {:test_name, {:amqp_server_sup, :start_link, _},
-          :permanent, :infinity, :supervisor, [:amqp_server_sup]} = spec
+    assert %{id: :test_name, start: {:amqp_server_sup, :start_link, _},
+          restart: :permanent, shutdown: :infinity, type: :supervisor, modules: [:amqp_server_sup]} = spec
   end
 
   test "Client/server pattern" do
@@ -40,7 +40,7 @@ defmodule AmqpDirectorTest do
       [host: @amqp_host, username: @amqp_username, password: @amqp_password],
       []
     )
-    Supervisor.start_link([serverSpec, clientSpec], strategy: :one_for_one)
+    {:ok, _} = Supervisor.start_link([serverSpec, clientSpec], strategy: :one_for_one)
 
     AmqpDirector.Client.await(:test_client)
     {:ok, "reply", "application/x-erlang-term"} = AmqpDirector.Client.call(:test_client, "test_exchange", "test_key", "some_msg", "application/x-erlang-term", [])

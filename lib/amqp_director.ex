@@ -113,6 +113,7 @@ defmodule AmqpDirector do
     |> Keyword.update!(:host, &String.to_charlist/1)
     |> :amqp_director.parse_connection_parameters()
     |> (fn(connection) -> :amqp_director.server_child_spec(name, handler, connection, count, config) end).()
+    |> old_spec_to_new
   end
 
   @doc """
@@ -130,6 +131,7 @@ defmodule AmqpDirector do
     |> Keyword.update!(:host, &String.to_charlist/1)
     |> :amqp_director.parse_connection_parameters()
     |> (fn(connection) -> :amqp_director.ad_client_child_spec(name, connection, config) end).()
+    |> old_spec_to_new
   end
 
 
@@ -148,6 +150,7 @@ defmodule AmqpDirector do
     |> Keyword.update!(:host, &String.to_charlist/1)
     |> :amqp_director.parse_connection_parameters()
     |> (fn(connection) -> :amqp_director.sp_client_child_spec(name, connection, config) end).()
+    |> old_spec_to_new
   end
 
 
@@ -207,5 +210,7 @@ defmodule AmqpDirector do
     arguments = Access.get(params, :arguments, [])
     AmqpDirector.Queues.exchange_declare(exchange: name, passive: passive, durable: durable, type: type, auto_delete: auto_delete, internal: internal, arguments: arguments)
   end
+
+  defp old_spec_to_new({name, start, restart, shutdown, type, modules}), do: %{id: name, start: start, restart: restart, shutdown: shutdown, type: type, modules: modules}
 
 end
