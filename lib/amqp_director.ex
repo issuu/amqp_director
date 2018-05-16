@@ -8,24 +8,25 @@ defmodule AmqpDirector do
 
   @typedoc "RabbitMQ broker connection options."
   @type connection_option ::
-      {:host, String.t} |
-      {:port, non_neg_integer} |
-      {:username, String.t} |
-      {:password, String.t} |
-      {:virtual_host, String.t}
+          {:host, String.t()}
+          | {:port, non_neg_integer}
+          | {:username, String.t()}
+          | {:password, String.t()}
+          | {:virtual_host, String.t()}
 
   @typedoc "The content type of the AMQP message payload."
-  @type content_type :: String.t
+  @type content_type :: String.t()
 
   @typedoc "The type that a AMQP RPC Server handler function must return."
-  @type handler_return_type ::  {:reply, payload :: binary, content_type} |
-                                :reject |
-                                :reject_no_requeue |
-                                {:reject_dump_msg, String.t} |
-                                :ack
+  @type handler_return_type ::
+          {:reply, payload :: binary, content_type}
+          | :reject
+          | :reject_no_requeue
+          | {:reject_dump_msg, String.t()}
+          | :ack
 
   @typedoc "The handler function type for the AMQP RPC Server."
-  @type handler :: (payload :: binary, content_type, type :: String.t -> handler_return_type)
+  @type handler :: (payload :: binary, content_type, type :: String.t() -> handler_return_type)
 
   @typedoc """
   AMQP RPC Server configuration options.
@@ -47,12 +48,12 @@ defmodule AmqpDirector do
     messages on disk. See AMQP specification for more information. Defaults to `false`
   """
   @type server_option ::
-      {:consume_queue, String.t} |
-      {:consumer_tag, String.t} |
-      {:queue_definitions, list(queue_definition)} |
-      {:no_ack, boolean} |
-      {:qos, number} |
-      {:reply_persistent, boolean}
+          {:consume_queue, String.t()}
+          | {:consumer_tag, String.t()}
+          | {:queue_definitions, list(queue_definition)}
+          | {:no_ack, boolean}
+          | {:qos, number}
+          | {:reply_persistent, boolean}
 
   @typedoc """
   AMQP RPC Client configuraion options.
@@ -71,10 +72,10 @@ defmodule AmqpDirector do
   * `:no_ack` - Specifies if the client should _NOT_ auto-acknowledge replies. Defaults to `false`.
   """
   @type client_option ::
-      {:app_id, String.t} |
-      {:queue_definitions, list(queue_definition)} |
-      {:reply_queue, String.t} |
-      {:no_ack, boolean}
+          {:app_id, String.t()}
+          | {:queue_definitions, list(queue_definition)}
+          | {:reply_queue, String.t()}
+          | {:no_ack, boolean}
 
   @typedoc """
   AMQP RPC Pull Client configuraion options.
@@ -91,8 +92,8 @@ defmodule AmqpDirector do
   ```
   """
   @type pull_client_option ::
-  {:app_id, String.t} |
-  {:queue_definitions, list(queue_definition)}
+          {:app_id, String.t()}
+          | {:queue_definitions, list(queue_definition)}
 
   @typedoc "Queue definition instructions."
   @type queue_definition :: exchange_declare | queue_declare | queue_bind
@@ -107,12 +108,20 @@ defmodule AmqpDirector do
 
   The server handles reconnecting by itself.
   """
-  @spec server_child_spec(atom, handler, list(connection_option), non_neg_integer, list(server_option)) :: Supervisor.child_spec
+  @spec server_child_spec(
+          atom,
+          handler,
+          list(connection_option),
+          non_neg_integer,
+          list(server_option)
+        ) :: Supervisor.child_spec()
   def server_child_spec(name, handler, connectionInfo, count, config) do
     connectionInfo
     |> Keyword.update!(:host, &String.to_charlist/1)
     |> :amqp_director.parse_connection_parameters()
-    |> (fn(connection) -> :amqp_director.server_child_spec(name, handler, connection, count, config) end).()
+    |> (fn connection ->
+          :amqp_director.server_child_spec(name, handler, connection, count, config)
+        end).()
     |> old_spec_to_new
   end
 
@@ -125,15 +134,15 @@ defmodule AmqpDirector do
 
   The client handles reconnecting by itself.
   """
-  @spec client_child_spec(atom, list(connection_option), list(client_option)) :: Supervisor.child_spec
-  def client_child_spec(name,  connectionInfo, config) do
+  @spec client_child_spec(atom, list(connection_option), list(client_option)) ::
+          Supervisor.child_spec()
+  def client_child_spec(name, connectionInfo, config) do
     connectionInfo
     |> Keyword.update!(:host, &String.to_charlist/1)
     |> :amqp_director.parse_connection_parameters()
-    |> (fn(connection) -> :amqp_director.ad_client_child_spec(name, connection, config) end).()
+    |> (fn connection -> :amqp_director.ad_client_child_spec(name, connection, config) end).()
     |> old_spec_to_new
   end
-
 
   @doc """
   Creates a child specification for an AMQP RPC pull client.
@@ -144,17 +153,17 @@ defmodule AmqpDirector do
 
   The client handles reconnecting by itself.
   """
-  @spec pull_client_child_spec(atom, list(connection_option), list(pull_client_option)) :: Supervisor.child_spec
-  def pull_client_child_spec(name,  connectionInfo, config) do
+  @spec pull_client_child_spec(atom, list(connection_option), list(pull_client_option)) ::
+          Supervisor.child_spec()
+  def pull_client_child_spec(name, connectionInfo, config) do
     connectionInfo
     |> Keyword.update!(:host, &String.to_charlist/1)
     |> :amqp_director.parse_connection_parameters()
-    |> (fn(connection) -> :amqp_director.sp_client_child_spec(name, connection, config) end).()
+    |> (fn connection -> :amqp_director.sp_client_child_spec(name, connection, config) end).()
     |> old_spec_to_new
   end
 
-
-  @typep queue_declare :: AmqpDirector.Queues.queue_declare
+  @typep queue_declare :: AmqpDirector.Queues.queue_declare()
 
   @doc """
   Declares a queue on the AMQP Broker.
@@ -165,17 +174,25 @@ defmodule AmqpDirector do
   Available options are: `:passive`, `:durable`, `:exclusive`, `:auto_delete` and `:arguments`. See AMQP specification for details on
   queue declaration.
   """
-  @spec queue_declare(String.t, Keyword.t) :: queue_declare
+  @spec queue_declare(String.t(), Keyword.t()) :: queue_declare
   def queue_declare(name, params \\ []) do
     passive = Access.get(params, :passive, false)
     durable = Access.get(params, :durable, false)
     exclusive = Access.get(params, :exclusive, false)
     auto_delete = Access.get(params, :auto_delete, false)
     arguments = Access.get(params, :arguments, [])
-    AmqpDirector.Queues.queue_declare(queue: name, passive: passive, durable: durable, exclusive: exclusive, auto_delete: auto_delete, arguments: arguments)
+
+    AmqpDirector.Queues.queue_declare(
+      queue: name,
+      passive: passive,
+      durable: durable,
+      exclusive: exclusive,
+      auto_delete: auto_delete,
+      arguments: arguments
+    )
   end
 
-  @typep queue_bind :: AmqpDirector.Queues.queue_bind
+  @typep queue_bind :: AmqpDirector.Queues.queue_bind()
 
   @doc """
   Binds a queue to an exchange.
@@ -183,13 +200,12 @@ defmodule AmqpDirector do
   This function is intended to be using within `:queue_definitions` configuration parameter of a client or a server. See
   `t:client_option/0` or `t:server_option/0` for details. See AMQP specification for details of queue binding.
   """
-  @spec queue_bind(String.t, String.t, String.t) :: queue_bind
+  @spec queue_bind(String.t(), String.t(), String.t()) :: queue_bind
   def queue_bind(name, exchange, routing_key) do
     AmqpDirector.Queues.queue_bind(queue: name, exchange: exchange, routing_key: routing_key)
   end
 
-
-  @typep exchange_declare :: AmqpDirector.Queues.exchange_declare
+  @typep exchange_declare :: AmqpDirector.Queues.exchange_declare()
 
   @doc """
   Declares an exchange on the AMQP Broker.
@@ -200,7 +216,7 @@ defmodule AmqpDirector do
   Available options are: `:passive`, `:durable`, `:auto_delete`, `:internal` and `:arguments`. See AMQP specification for details on exchange
   declaration.
   """
-  @spec exchange_declare(String.t, Keyword.t) :: exchange_declare
+  @spec exchange_declare(String.t(), Keyword.t()) :: exchange_declare
   def exchange_declare(name, params \\ []) do
     type = Keyword.get(params, :type, "direct")
     passive = Keyword.get(params, :passive, false)
@@ -208,9 +224,25 @@ defmodule AmqpDirector do
     auto_delete = Keyword.get(params, :auto_delete, false)
     internal = Keyword.get(params, :internal, false)
     arguments = Access.get(params, :arguments, [])
-    AmqpDirector.Queues.exchange_declare(exchange: name, passive: passive, durable: durable, type: type, auto_delete: auto_delete, internal: internal, arguments: arguments)
+
+    AmqpDirector.Queues.exchange_declare(
+      exchange: name,
+      passive: passive,
+      durable: durable,
+      type: type,
+      auto_delete: auto_delete,
+      internal: internal,
+      arguments: arguments
+    )
   end
 
-  defp old_spec_to_new({name, start, restart, shutdown, type, modules}), do: %{id: name, start: start, restart: restart, shutdown: shutdown, type: type, modules: modules}
-
+  defp old_spec_to_new({name, start, restart, shutdown, type, modules}),
+    do: %{
+      id: name,
+      start: start,
+      restart: restart,
+      shutdown: shutdown,
+      type: type,
+      modules: modules
+    }
 end

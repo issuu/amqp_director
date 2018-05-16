@@ -10,8 +10,10 @@ defmodule AmqpDirector.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),
-      dialyzer: [plt_add_deps: :transitive,
-                 flags: [:error_handling, :race_conditions, :underspecs]],
+      dialyzer: [
+        plt_add_deps: :transitive,
+        flags: [:error_handling, :race_conditions, :underspecs]
+      ],
       docs: [extras: ["README.md"], main: "readme"],
       source_url: "https://github.com/issuu/amqp_director"
     ]
