@@ -1,6 +1,9 @@
 # AMQP Director
 ## A simplistic embeddable RPC Client/Server library for AMQP/RabbitMQ.
 
+[![Build Status](https://travis-ci.org/issuu/amqp_director.svg?branch=master)](https://travis-ci.org/issuu/amqp_director)
+[![Hex.pm Version](http://img.shields.io/hexpm/v/amqp_director.svg?style=flat)](https://hex.pm/packages/amqp_director)
+
 AMQP director implements two very common patterns for AMQP/RabbitMQ in a robust way.
 
 First, it implements a server-pattern: Messages are consumed from a queue `QIn`.
