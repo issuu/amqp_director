@@ -33,11 +33,13 @@
                                 ack.
 -type handler() :: fun((Payload :: binary(), ContentType :: binary(), Type :: binary()) -> handler_return_type()).
 
--type server_option() :: {host, binary()} |
-      {port, non_neg_integer()} |
-      {username, binary()} |
-      {password, binary()} |
-      {virtual_host, binary()}.
+-type server_option() ::
+    {queue_definitions, list(queue_definition())} |
+    {consume_queue, binary()} |
+    {consumer_tag, binary()} |
+    {no_ack, boolean()} |
+    {qos, number()} |
+    {reply_persistent, boolean()}.
 
 
 -type client_option() ::
