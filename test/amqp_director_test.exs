@@ -29,6 +29,7 @@ defmodule AmqpDirectorTest do
   end
 
   test "Client/server pattern" do
+    :ets.new(:counter, [:public, :named_table])
     serverSpec =
       AmqpDirector.server_child_spec(
         :test_name,
@@ -54,6 +55,17 @@ defmodule AmqpDirectorTest do
 
     AmqpDirector.Client.await(:test_client)
 
+    :ok =
+      AmqpDirector.Client.cast(
+        :test_client,
+        "test_exchange",
+        "test_key",
+        "some_msg",
+        "application/x-erlang-term",
+        "event",
+        []
+      )
+
     {:ok, "reply", "application/x-erlang-term"} =
       AmqpDirector.Client.call(
         :test_client,
@@ -61,12 +73,20 @@ defmodule AmqpDirectorTest do
         "test_key",
         "some_msg",
         "application/x-erlang-term",
-        []
+        timeout: 500
       )
+    Process.sleep(1000)
+    values = :ets.lookup(:counter, :key)
+    2 = values[:key]
   end
 
-  defp handler("some_msg", "application/x-erlang-term", "request"),
-    do: {:reply, "reply", "application/x-erlang-term"}
-
-  defp handler(_, _, _), do: {:reply, "wrong_msg", "application/x-erlang-term"}
+  defp handler(msg, contentType, eventType) do
+    :ets.update_counter(:counter, :key, 1, {:value, 0})
+    case {msg, contentType, eventType} do
+      {"some_msg", "application/x-erlang-term", "request"} ->
+        {:reply, "reply", "application/x-erlang-term"}
+      _ ->
+        {:reply, "wrong_msg", "application/x-erlang-term"}
+      end
+  end
 end

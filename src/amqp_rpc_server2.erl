@@ -105,15 +105,19 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
                reply_to = Q} = Props,
     case Fun(Payload, ContentType, Type) of
       {reply, Response, CT} ->
-        Properties = #'P_basic'{correlation_id = CorrelationId,
-                                content_type = CT,
-                                type = <<"reply">>,
-                                delivery_mode = DeliveryMode},
-        Publish = #'basic.publish'{exchange = <<>>,
-                                   routing_key = Q,
-                                   mandatory = true},
-        amqp_channel:call(Channel, Publish, #amqp_msg{props = Properties,
-                                                      payload = Response}),
+        case Q of
+          undefined -> ok;
+          _ ->
+            Properties = #'P_basic'{correlation_id = CorrelationId,
+                                    content_type = CT,
+                                    type = <<"reply">>,
+                                    delivery_mode = DeliveryMode},
+            Publish = #'basic.publish'{exchange = <<>>,
+                                       routing_key = Q,
+                                       mandatory = true},
+            amqp_channel:call(Channel, Publish, #amqp_msg{props = Properties,
+                                                          payload = Response})
+        end,
         case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
                     false -> ok
         end,
