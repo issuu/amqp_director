@@ -48,6 +48,7 @@ defmodule AmqpDirector do
         AmqpDirector.queue_bind("my_queue", "my_exchange", "some.topic.*")
       ]}
     ```
+  * `:pre_ack` - The server will acknowledge the message as soon as it receives it, before even calling the handler funcion.
   * `:no_ack` - Specifies if the server should _NOT_ auto-acknowledge consumed messages. Defaults to `false`.
   * `:qos` - Specifies the prefetch count on the consume queue. Defaults to `2`.
   * `:reply_persistent` - Specifies the delivery mode for the AMQP replies. Setting this to `true` will make the broker log the
@@ -57,6 +58,7 @@ defmodule AmqpDirector do
           {:consume_queue, String.t()}
           | {:consumer_tag, String.t()}
           | {:queue_definitions, list(queue_definition)}
+          | {:pre_ack, boolean}
           | {:no_ack, boolean}
           | {:qos, number}
           | {:reply_persistent, boolean}

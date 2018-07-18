@@ -26,21 +26,28 @@ inject(Channel, [#'exchange.declare'{} = ExchDec | Defns]) ->
 %% @doc Exit in case of persistent messages on non durable queues
 %% @end
 verify_config(Config) ->
+    case {proplists:get_value(pre_ack, Config), proplists:get_value(no_ack, Config)} of
+        {true, true} ->
+            {conflict, "Cannot set both pre_ack and no_ack to true!"};
+        _ ->
+            validate_persistent(Config)
+    end.
+
+validate_persistent(Config) ->
     case proplists:is_defined(reply_persistent, Config) orelse
-         proplists:is_defined(persistent, Config) of
+        proplists:is_defined(persistent, Config) of
         false -> ok;
         true ->
             Filter = fun(#'queue.declare'{ durable = Durable }) ->
-                             not Durable
-                     end,
+                            not Durable
+                    end,
             case [ QDef || #'queue.declare'{} =
-                               QDef <- proplists:get_value(queue_definitions, Config, []),
-                           Filter(QDef) ] of
+                            QDef <- proplists:get_value(queue_definitions, Config, []),
+                        Filter(QDef) ] of
                 [] -> ok;
                 _ -> {conflict, "non durable persistent queue definition found", Config}
             end
     end.
-
 
 
 %% Unit tests
