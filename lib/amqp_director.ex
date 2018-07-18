@@ -25,8 +25,14 @@ defmodule AmqpDirector do
           | {:reject_dump_msg, String.t()}
           | :ack
 
-  @typedoc "The handler function type for the AMQP RPC Server."
-  @type handler :: (payload :: binary, content_type, type :: String.t() -> handler_return_type)
+  @typedoc """
+  The handler function type for the AMQP RPC Server. The handler can be either arity 3 or 1. If the handler is of arity 3 then `amqp_director` will
+  deconstruct the message and only provide the payload along with content type into the handler. If the handler is of arity 1 then it will be called
+  with a raw AMQP message record
+  """
+  @type handler :: (payload :: binary, content_type, type :: String.t() -> handler_return_type) |
+  (raw_msg :: {basic_deliver :: term, amqp_msg :: term} -> handler_return_type)
+
 
   @typedoc """
   AMQP RPC Server configuration options.

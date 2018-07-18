@@ -42,7 +42,10 @@
                 delivery_mode = 1 % should reply msg persist (2) or not (1)?
                }).
 -define(MAX_RECONNECT, timer:seconds(30)).
-
+-type rpc_handler_return() :: {reply, binary()} | ack | reject | reject_no_requeue.
+-type rpc_handler() ::
+    fun(({#'basic.deliver'{}, #amqp_msg{}}) -> rpc_handler_return()) |
+    fun((binary(), binary(), binary()) -> rpc_handler_return()).
 %%--------------------------------------------------------------------------
 
 %% @doc Starts a new RPC server instance that receives requests via a
@@ -57,10 +60,7 @@
 %% wants the server to do with the connection. You can either reply, ack, reject
 %% or finally reject the request with no requeueing.
 %% @end
--spec start_link(ConnectionRef, Config, RpcHandler) -> {ok, pid()}
-  when ConnectionRef :: pid(),
-       Config :: list({atom(), term()}),
-       RpcHandler :: fun ((binary()) -> {reply, binary()} | ack | reject | reject_no_requeue).
+-spec start_link(ConnectionRef :: pid(), Config :: list({atom(), term()}), RpcHandler :: rpc_handler()) -> {ok, pid()}.
 start_link(ConnectionRef, Config, Fun) ->
     HandlerFun = case erlang:fun_info(Fun, arity) of
         {arity, 1} -> Fun;
