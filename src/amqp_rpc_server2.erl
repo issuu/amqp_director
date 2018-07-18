@@ -38,14 +38,15 @@
 -export([start_link/3]).
 
 -record(state, {channel, handler,
-                ack = true, % should we ack messages?
+                pre_ack = false, % should we ack messages before the handler is called?
+                post_ack = true, % should we ack messages after the handler returns?
                 delivery_mode = 1 % should reply msg persist (2) or not (1)?
-               }).
+}).
 -define(MAX_RECONNECT, timer:seconds(30)).
 -type rpc_handler_return() :: {reply, binary()} | ack | reject | reject_no_requeue.
 -type rpc_handler() ::
-    fun(({#'basic.deliver'{}, #amqp_msg{}}) -> rpc_handler_return()) |
-    fun((binary(), binary(), binary()) -> rpc_handler_return()).
+fun(({#'basic.deliver'{}, #amqp_msg{}}) -> rpc_handler_return()) |
+fun((binary(), binary(), binary()) -> rpc_handler_return()).
 %%--------------------------------------------------------------------------
 
 %% @doc Starts a new RPC server instance that receives requests via a
@@ -62,186 +63,199 @@
 %% @end
 -spec start_link(ConnectionRef :: pid(), Config :: list({atom(), term()}), RpcHandler :: rpc_handler()) -> {ok, pid()}.
 start_link(ConnectionRef, Config, Fun) ->
-    HandlerFun = case erlang:fun_info(Fun, arity) of
-        {arity, 1} -> Fun;
-        {arity, 3} ->
-            %% wrap
-            fun ({#'basic.deliver'{},
-                  #amqp_msg{props = #'P_basic'{ content_type = ContentType,
-                                                type = Type},
-                            payload = Payload}}) ->
-                Fun(Payload, ContentType, Type)
-            end
-    end,
-    gen_server:start_link(?MODULE, [ConnectionRef, Config, HandlerFun], []).
+  HandlerFun = case erlang:fun_info(Fun, arity) of
+                 {arity, 1} -> Fun;
+                 {arity, 3} ->
+                   %% wrap
+                   fun({#'basic.deliver'{},
+                        #amqp_msg{props   = #'P_basic'{content_type = ContentType,
+                                                       type         = Type},
+                                  payload = Payload}}) ->
+                     Fun(Payload, ContentType, Type)
+                   end
+               end,
+  gen_server:start_link(?MODULE, [ConnectionRef, Config, HandlerFun], []).
 
 %%--------------------------------------------------------------------------
 
 %% @private
 init([ConnectionRef, Config, Fun]) ->
-    process_flag(trap_exit, true),
-    case amqp_definitions:verify_config(Config) of
-        ok ->
-            ReconnectTime = 500,
-            timer:send_after(ReconnectTime, self(),
-                            {reconnect, ConnectionRef, Config, Fun,
-                            min(ReconnectTime * 2, ?MAX_RECONNECT)}),
-            {ok, #state { channel = undefined, handler = Fun }};
-        {conflict, Msg, BadQueueDef} ->
-            lager:alert("Bad queue [.. ~p: ~p ..]", [Msg, BadQueueDef]),
-            {stop, Msg}
-    end.
+  process_flag(trap_exit, true),
+  case amqp_definitions:verify_config(Config) of
+    ok ->
+      ReconnectTime = 500,
+      timer:send_after(ReconnectTime, self(),
+                       {reconnect, ConnectionRef, Config, Fun,
+                        min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+      {ok, #state{channel = undefined, handler = Fun}};
+    {conflict, Msg, Detail} ->
+      lager:alert("Bad config [.. ~p: ~p ..]", [Msg, Detail]),
+      {stop, Msg}
+  end.
 
 %% @private
 handle_info(shutdown, State) ->
-    {stop, normal, State};
+  {stop, normal, State};
 
 %% @private
-handle_info({reconnect, CRef, Config, Fun, ReconnectTime}, #state { channel = undefined }) ->
-    {noreply, try_connect(CRef, Config, Fun, ReconnectTime)};
+handle_info({reconnect, CRef, Config, Fun, ReconnectTime}, #state{channel = undefined}) ->
+  {noreply, try_connect(CRef, Config, Fun, ReconnectTime)};
 handle_info({#'basic.consume'{}, _}, State) ->
-    {noreply, State};
+  {noreply, State};
 handle_info(#'basic.consume_ok'{}, State) ->
-    {noreply, State};
+  {noreply, State};
 handle_info(#'basic.cancel'{}, State) ->
-    {step, amqp_server_cancelled, State};
+  {step, amqp_server_cancelled, State};
 handle_info(#'basic.cancel_ok'{}, State) ->
-    {stop, normal, State};
+  {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
              #amqp_msg{props = Props}} = InfoMsg,
-            State = #state{handler = Fun, channel = Channel, ack = Ack, delivery_mode = DeliveryMode}) ->
-    #'P_basic'{correlation_id = CorrelationId,
-               reply_to = Q} = Props,
-    case Fun(InfoMsg) of
-      {reply, Response, CT} ->
-        case Q of
-          undefined -> ok;
-          _ ->
-            Properties = #'P_basic'{correlation_id = CorrelationId,
-                                    content_type = CT,
-                                    type = <<"reply">>,
-                                    delivery_mode = DeliveryMode},
-            Publish = #'basic.publish'{exchange = <<>>,
-                                       routing_key = Q,
-                                       mandatory = true},
-            amqp_channel:call(Channel, Publish, #amqp_msg{props = Properties,
-                                                          payload = Response})
-        end,
-        case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
-                    false -> ok
-        end,
-        {noreply, State};
-      reject when Ack ->
-        amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = true}),
-        {noreply, State};
-      reject when not Ack ->
-        lager:notice("reject wanted, but channel set to no-ack"),
-        {noreply, State};
-      reject_no_requeue when Ack ->
-        amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
-        {noreply, State};
-      reject_no_requeue when not Ack ->
-        lager:notice("reject_no_requeue wanted, but channel set to no-ack"),
-        {noreply, State};
-      {reject_dump_msg, Msg} when Ack ->
-        amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
-        lager:error("Error AMQP message rejected due to ~p: ~p", [Msg, format_delivery(InfoMsg)]),
-        {noreply, State};
-      {reject_dump_msg, Msg} when not Ack ->
-        lager:error("Error AMQP message rejected due to ~p: ~p", [Msg, format_delivery(InfoMsg)]),
-        {noreply, State};
-      ack when Ack ->
-        amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
-        {noreply, State};
-      ack when not Ack ->
-        {noreply, State} % Ignore acks here
-    end;
-handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
-    lager:notice("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
-    {noreply, State};
+            State = #state{handler = Fun, channel = Channel, post_ack = Ack, pre_ack = PreAck, delivery_mode = DeliveryMode}) ->
+  #'P_basic'{correlation_id = CorrelationId,
+             reply_to       = Q} = Props,
+  case PreAck of
+    true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
+    false -> ok
+  end,
+  case Fun(InfoMsg) of
+    {reply, Response, CT} ->
+      case Q of
+        undefined -> ok;
+        _ ->
+          Properties = #'P_basic'{correlation_id = CorrelationId,
+                                  content_type   = CT,
+                                  type           = <<"reply">>,
+                                  delivery_mode  = DeliveryMode},
+          Publish = #'basic.publish'{exchange    = <<>>,
+                                     routing_key = Q,
+                                     mandatory   = true},
+          amqp_channel:call(Channel, Publish, #amqp_msg{props   = Properties,
+                                                        payload = Response})
+      end,
+      case Ack of true -> amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag});
+        false -> ok
+      end,
+      {noreply, State};
+    reject when Ack ->
+      amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = true}),
+      {noreply, State};
+    reject when not Ack ->
+      lager:notice("reject wanted, but channel set to no-ack"),
+      {noreply, State};
+    reject_no_requeue when Ack ->
+      amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
+      {noreply, State};
+    reject_no_requeue when not Ack ->
+      lager:notice("reject_no_requeue wanted, but channel set to no-ack"),
+      {noreply, State};
+    {reject_dump_msg, Msg} when Ack ->
+      amqp_channel:call(Channel, #'basic.reject'{delivery_tag = DeliveryTag, requeue = false}),
+      lager:error("Error AMQP message rejected due to ~p: ~p", [Msg, format_delivery(InfoMsg)]),
+      {noreply, State};
+    {reject_dump_msg, Msg} when not Ack ->
+      lager:error("Error AMQP message rejected due to ~p: ~p", [Msg, format_delivery(InfoMsg)]),
+      {noreply, State};
+    ack when Ack ->
+      amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DeliveryTag}),
+      {noreply, State};
+    ack when not Ack ->
+      {noreply, State} % Ignore acks here
+  end;
+handle_info({#'basic.return'{} = ReturnMsg, _Msg}, State) ->
+  lager:notice("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
+  {noreply, State};
 handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
-    {stop, Reason, State#state{ channel = undefined }};
+  {stop, Reason, State#state{channel = undefined}};
 handle_info({'EXIT', _Pid, normal}, State) ->
-    %% Since we trap exits, normally exiting processes will yell in the log, quell them.
-    {noreply, State};
+  %% Since we trap exits, normally exiting processes will yell in the log, quell them.
+  {noreply, State};
 handle_info({'EXIT', _Pid, shutdown}, State) ->
-    %% Shutdowns are also normal exit reasons, quell them.
-    {noreply, State};
+  %% Shutdowns are also normal exit reasons, quell them.
+  {noreply, State};
 handle_info({'EXIT', _Pid, Error}, State) ->
-    {stop, {linked_process_exit, Error}, State};
+  {stop, {linked_process_exit, Error}, State};
 handle_info(_Unknown, State) ->
-    {noreply, State}.
+  {noreply, State}.
 
 %% @private
 handle_call(stop, _From, State) ->
-    {stop, normal, ok, State}.
+  {stop, normal, ok, State}.
 
 %% @private
 handle_cast(_Message, State) ->
-    {noreply, State}.
+  {noreply, State}.
 
 %% Closes the channel this gen_server instance started
 %% @private
-terminate(_Reason, #state { channel = undefined }) ->
-    ok;
+terminate(_Reason, #state{channel = undefined}) ->
+  ok;
 terminate(_Reason, #state{channel = Channel}) ->
-    catch amqp_channel:close(Channel),
-    ok.
+  catch amqp_channel:close(Channel),
+  ok.
 
 %% @private
 code_change(_OldVsn, State, _Extra) ->
-    State.
+  State.
 
 %%--------------------------------------------------------------------------
 
 try_connect(ConnectionRef, Config, Fun, ReconnectTime) ->
-    try
-        connect(ConnectionRef, Config, Fun)
-    catch
-     throw:reconnect ->
-        %% No need to log here. Connection management handles this
-        timer:send_after(ReconnectTime, self(),
-                         {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
-        #state { channel = undefined, handler = Fun }
+  try
+    connect(ConnectionRef, Config, Fun)
+  catch
+    throw:reconnect ->
+      %% No need to log here. Connection management handles this
+      timer:send_after(ReconnectTime, self(),
+                       {reconnect, ConnectionRef, Config, Fun, min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+      #state{channel = undefined, handler = Fun}
   end.
 
 qos_configuration(Config) ->
-    case proplists:get_value(qos, Config) of
-        undefined -> #'basic.qos'{prefetch_count = 2};
-        Qos when is_integer(Qos) -> #'basic.qos'{prefetch_count = Qos};
-        Qos -> Qos
-    end.
+  case proplists:get_value(qos, Config) of
+    undefined -> #'basic.qos'{prefetch_count = 2};
+    Qos when is_integer(Qos) -> #'basic.qos'{prefetch_count = Qos};
+    Qos -> Qos
+  end.
 
 connect(ConnectionRef, Config, Fun) ->
   case amqp_connection_mgr:fetch(ConnectionRef) of
     {error, econnrefused} -> throw(reconnect);
     {ok, Connection} ->
-        case amqp_connection:open_channel(
-                          Connection, {amqp_direct_consumer, [self()]}) of
-            {ok, Channel} ->
-              erlang:monitor(process, Channel),
-              ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
-              case proplists:get_value(consume_queue, Config, undefined) of
-                  undefined -> exit(no_queue_to_consume);
-                  Q ->
-                      ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>),
-                      NoAck = proplists:get_value(no_ack, Config, false),
-                      DeliveryMode = case proplists:is_defined(reply_persistent, Config) of
-                          false -> 1;
-                          true -> 2
-                      end,
-                      amqp_channel:register_return_handler(Channel, self()),
-                      amqp_channel:call(Channel, qos_configuration(Config)),
-                      #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
-                         queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
-                      #state{channel = Channel, handler = Fun, ack = not NoAck, delivery_mode = DeliveryMode }
-              end;
-           closing ->
-             throw(reconnect)
-       end
+      case amqp_connection:open_channel(
+        Connection, {amqp_direct_consumer, [self()]}) of
+        {ok, Channel} ->
+          erlang:monitor(process, Channel),
+          ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
+          case proplists:get_value(consume_queue, Config, undefined) of
+            undefined -> exit(no_queue_to_consume);
+            Q ->
+              ConsumerTag = proplists:get_value(consumer_tag, Config, <<"">>),
+              NoAck = proplists:get_value(no_ack, Config, false),
+              PreAck = proplists:get_value(pre_ack, Config, false),
+              PostAck = case PreAck of
+                          true -> false;
+                          _ -> not NoAck
+                        end,
+              DeliveryMode = case proplists:is_defined(reply_persistent, Config) of
+                               false -> 1;
+                               true -> 2
+                             end,
+              amqp_channel:register_return_handler(Channel, self()),
+              amqp_channel:call(Channel, qos_configuration(Config)),
+              #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
+                queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
+              #state{channel       = Channel,
+                     handler       = Fun,
+                     pre_ack       = PreAck,
+                     post_ack      = PostAck,
+                     delivery_mode = DeliveryMode}
+          end;
+        closing ->
+          throw(reconnect)
+      end
   end.
 
-format_delivery({BasicDeliver, #amqp_msg{ payload = Payload } = AmqpMsg}) ->
-    Sz = byte_size(Payload),
-    PayloadSz = iolist_to_binary([<<"Payload of ">>, integer_to_binary(Sz), <<" bytes">>]),
-    {BasicDeliver, AmqpMsg#amqp_msg { payload = PayloadSz }}.
+format_delivery({BasicDeliver, #amqp_msg{payload = Payload} = AmqpMsg}) ->
+  Sz = byte_size(Payload),
+  PayloadSz = iolist_to_binary([<<"Payload of ">>, integer_to_binary(Sz), <<" bytes">>]),
+  {BasicDeliver, AmqpMsg#amqp_msg{payload = PayloadSz}}.
