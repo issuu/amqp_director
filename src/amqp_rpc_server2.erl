@@ -35,7 +35,7 @@
 
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2]).
--export([start_link/3]).
+-export([start_link/3, await/1, await/2]).
 
 -record(state, {channel, handler,
                 ack = true, % should we ack messages?
@@ -74,6 +74,24 @@ start_link(ConnectionRef, Config, Fun) ->
             end
     end,
     gen_server:start_link(?MODULE, [ConnectionRef, Config, HandlerFun], []).
+
+%% @equiv await(Name, infinity)
+-spec await(Name) -> term()
+  when Name :: atom().
+await(Name) ->
+    gproc:await({n, l, Name}).
+%% @doc Await the connection on a server.
+%% Await that a server has a connection to the broker. This can be
+%% used in start-up sequences to ensure that you have a connection. It
+%% can be used to await in complex start-up sequences so you can be
+%% sure there is a connection. The timeout specifies for how long to wait.
+%% @end
+-spec await(Name, Timeout)
+           -> term()
+                  when Name :: atom(),
+                       Timeout :: integer() | 'infinity'.
+await(Name, Timeout) ->
+    gproc:await({n, l, Name}, Timeout).
 
 %%--------------------------------------------------------------------------
 
@@ -234,6 +252,7 @@ connect(ConnectionRef, Config, Fun) ->
                       amqp_channel:call(Channel, qos_configuration(Config)),
                       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
                          queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
+                      gproc:add_local_name(Name),
                       #state{channel = Channel, handler = Fun, ack = not NoAck, delivery_mode = DeliveryMode }
               end;
            closing ->
