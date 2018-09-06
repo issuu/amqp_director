@@ -109,7 +109,7 @@ cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) ->
 
 %% @equiv call(RpcClient, Payload, ContentType, 5000)
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
-    call(RpcClient, Exchange, RoutingKey, Payload, ContentType, [{timeout, 5000}]).
+    call(RpcClient, Exchange, RoutingKey, Payload, ContentType, [{timeout, 5500}]).
 
 %% @doc Invokes an RPC.
 %% Note the caller of this function is responsible for
@@ -131,10 +131,11 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
        Reason :: term().
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, infinity),
+    TTL = proplists:get_value(ttl, Options, 5000),
     Durability = decode_durability(Options),
     case valid_options(Payload) of
         ok ->
-            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, Timeout);
+            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability, TTL}, Timeout);
         {error, Reason} ->
             {error, Reason}
     end.
