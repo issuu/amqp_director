@@ -8,11 +8,12 @@ defmodule AmqpDirector.Client do
   @typedoc """
   Options for an RPC request.
 
-  * `:timeout` - Time the client awaits response. Only valid for `call/6`
+  * `:ttl` - Specified the TTL of the message on AMQP.
+  * `:timeout` - Time the client awaits response. Only valid for `call/6`. This is the `gen_server` timeout. Should be larger than the value for `:ttl`
   * `:persistent` - Specifies the delivery mode for the AMQP messages. Setting this to `true` will make the broker log the
   messages on disk. See AMQP specification for more information. Defaults to `false`
   """
-  @type request_options :: {:timeout, pos_integer} | {:persistent, boolean}
+  @type request_options :: {:timeout, pos_integer | :infinity} | {:persistent, boolean} | {:ttl, pos_integer}
 
   @doc """
   Await until the client is started.
