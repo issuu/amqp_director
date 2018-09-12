@@ -79,7 +79,6 @@ start_link(ConnectionRef, Config, Fun) ->
 
 %% @private
 init([ConnectionRef, Config, Fun]) ->
-    process_flag(trap_exit, true),
     case amqp_definitions:verify_config(Config) of
         ok ->
             ReconnectTime = 500,
@@ -159,7 +158,7 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
 handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
     lager:notice("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
     {noreply, State};
-handle_info({'DOWN', _MRef, process, _Pid, Reason}, State) ->
+handle_info({'DOWN', _MRef, process, Pid, Reason}, #state{channel = Pid} = State) ->
     {stop, Reason, State#state{ channel = undefined }};
 handle_info({'EXIT', _Pid, normal}, State) ->
     %% Since we trap exits, normally exiting processes will yell in the log, quell them.
@@ -220,6 +219,7 @@ connect(ConnectionRef, Config, Fun) ->
                           Connection, {amqp_direct_consumer, [self()]}) of
             {ok, Channel} ->
               erlang:monitor(process, Channel),
+              lager:warning("Now monitoring ~p", [Channel]),
               ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
               case proplists:get_value(consume_queue, Config, undefined) of
                   undefined -> exit(no_queue_to_consume);

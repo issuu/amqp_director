@@ -30,6 +30,7 @@ defmodule AmqpDirectorTest do
 
   test "Client/server pattern" do
     :ets.new(:counter, [:public, :named_table])
+
     serverSpec =
       AmqpDirector.server_child_spec(
         :test_name,
@@ -38,10 +39,10 @@ defmodule AmqpDirectorTest do
         2,
         queue_definitions: [
           AmqpDirector.exchange_declare("test_exchange"),
-          AmqpDirector.queue_declare("test_queue", auto_delete: true),
-          AmqpDirector.queue_bind("test_queue", "test_exchange", "test_key")
+          AmqpDirector.queue_declare("ex_test_queue", auto_delete: true),
+          AmqpDirector.queue_bind("ex_test_queue", "test_exchange", "test_key")
         ],
-        consume_queue: "test_queue"
+        consume_queue: "ex_test_queue"
       )
 
     clientSpec =
@@ -75,6 +76,7 @@ defmodule AmqpDirectorTest do
         "application/x-erlang-term",
         timeout: 500
       )
+
     Process.sleep(1000)
     values = :ets.lookup(:counter, :key)
     2 = values[:key]
@@ -82,11 +84,13 @@ defmodule AmqpDirectorTest do
 
   defp handler(msg, contentType, eventType) do
     :ets.update_counter(:counter, :key, 1, {:value, 0})
+
     case {msg, contentType, eventType} do
       {"some_msg", "application/x-erlang-term", "request"} ->
         {:reply, "reply", "application/x-erlang-term"}
+
       _ ->
         {:reply, "wrong_msg", "application/x-erlang-term"}
-      end
+    end
   end
 end
