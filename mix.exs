@@ -5,7 +5,7 @@ defmodule AmqpDirector.MixProject do
     [
       app: :amqp_director,
       description: "A simplistic embeddable RPC Client/Server library for AMQP/RabbitMQ.",
-      version: "1.3.0",
+      version: "1.3.1",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -29,10 +29,10 @@ defmodule AmqpDirector.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_doc, "~> 0.16", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.18.0", only: :dev, runtime: false},
       {:dialyxir, "~> 0.5", only: :dev, runtime: false},
-      {:ranch, "~> 1.6.1", override: true},
-      {:ranch_proxy_protocol, "~> 2.1.0", override: true},
+      # {:ranch, "~> 1.6.1", override: true},
+      # {:ranch_proxy_protocol, "~> 2.1.0", override: true},
       {:amqp_client, "~> 3.7.7"},
       {:gproc, "~> 0.6.1"},
       {:lager, "~> 3.6.3"}

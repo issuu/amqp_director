@@ -219,7 +219,6 @@ connect(ConnectionRef, Config, Fun) ->
                           Connection, {amqp_direct_consumer, [self()]}) of
             {ok, Channel} ->
               erlang:monitor(process, Channel),
-              lager:warning("Now monitoring ~p", [Channel]),
               ok = amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Config, [])),
               case proplists:get_value(consume_queue, Config, undefined) of
                   undefined -> exit(no_queue_to_consume);
