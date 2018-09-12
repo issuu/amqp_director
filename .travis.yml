@@ -8,7 +8,6 @@ otp_release:
 
 script:
   - make test
-  - make dialyzer
 
 services:
   - rabbitmq
