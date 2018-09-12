@@ -21,7 +21,7 @@ eunit:
 	rebar3 eunit
 
 common-test:
-	rebar3 ct --config ./test/test-local.config
+	rebar3 ct --config ./test/test-local.config --readable=false
 
 ## Dialyzer stuff follows
 dialyzer:
