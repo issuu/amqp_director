@@ -81,9 +81,9 @@ await(Name) -> gproc:await({n, l, Name}).
        Result :: term().
 await(Name, Timeout) -> gproc:await({n, l, Name}, Timeout).
 
-%% @equiv cast(Client, Exch, Rk, Payload, Type, ContentType, [])
-cast(RpcClient, Exchange, RoutingKey, Payload, Type, ContentType) ->
-    cast(RpcClient, Exchange, RoutingKey, Payload, Type, ContentType, []).
+%% @equiv cast(Client, Exch, Rk, Payload, ContentType, Type, [])
+cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type) ->
+    cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, []).
 
 %% @doc Send a fire-and-forget message to the exchange.
 %% This implements the usual cast operation where a message is forwarded to a queue.
