@@ -76,12 +76,14 @@ defmodule AmqpDirector do
   ```
   * `:reply_queue` - Allows naming for the reply queue. Defaults to empty name, making the RabbitMQ broker auto-generate the name.
   * `:no_ack` - Specifies if the client should _NOT_ auto-acknowledge replies. Defaults to `false`.
+  * `:direct_reply` - use pseudo-queue `amq.rabbitmq.reply-to` instead of setting up a new queue to consume from. By default not present.
   """
   @type client_option ::
           {:app_id, String.t()}
           | {:queue_definitions, list(queue_definition)}
           | {:reply_queue, String.t()}
           | {:no_ack, boolean}
+          | :direct_reply
 
   @typedoc """
   AMQP RPC Pull Client configuraion options.
