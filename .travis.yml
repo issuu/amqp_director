@@ -9,6 +9,7 @@ matrix:
 
 script:
   - make test
+  - make dialyzer
 
 services:
   - rabbitmq
