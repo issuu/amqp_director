@@ -51,6 +51,7 @@
                }).
 
 -define(MAX_RECONNECT, timer:seconds(30)).
+-define(DIRECT_REPLY_QUEUE, <<"amq.rabbitmq.reply-to">>).
 
 %%--------------------------------------------------------------------------
 
@@ -325,9 +326,13 @@ setup_amqp_state(State = #state{channel = Channel}, Configuration) ->
     amqp_definitions:inject(Channel,
                             proplists:get_value(queue_definitions, Configuration, [])),
 
-    RQ = setup_reply_queue(
-           Channel,
-           proplists:get_value(reply_queue, Configuration, undefined)),
+    RQ = case proplists:get_value(rabbitmq_direct_reply, Configuration, false) of
+        false ->
+                setup_reply_queue(
+                    Channel,
+                    proplists:get_value(reply_queue, Configuration, undefined));
+        true -> ?DIRECT_REPLY_QUEUE
+    end,
     State#state { reply_queue = RQ }.
 
 setup_reply_queue(Channel, undefined) ->
@@ -336,6 +341,7 @@ setup_reply_queue(Channel, undefined) ->
                           #'queue.declare' { exclusive = true, auto_delete = true }),
     ReplyQ;
 setup_reply_queue(_Channel, none) -> none;
+setup_reply_queue(_Channel, ?DIRECT_REPLY_QUEUE) -> ?DIRECT_REPLY_QUEUE;
 setup_reply_queue(Channel, ReplyQ) when is_binary(ReplyQ) ->
     #'queue.declare_ok' { queue = ReplyQ } =
         amqp_channel:call(Channel,
@@ -435,11 +441,13 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
                                              {amqp_direct_consumer, [self()]}),
             %% Monitor the Channel for errors
             erlang:monitor(process, Channel),
+            NoAck = proplists:get_value(rabbitmq_direct_reply, Configuration, false) or
+                    proplists:get_value(no_ack, Configuration, false),
             InitialState =
                 #state{channel     = Channel,
                        app_id      = proplists:get_value(app_id, Configuration,
                                                          list_to_binary(atom_to_list(node()))),
-                       ack = not (proplists:get_value(no_ack, Configuration, false))},
+                       ack = not NoAck},
             State = setup_amqp_state(InitialState, Configuration),
             setup_consumer(State),
             gproc:add_local_name(Name),

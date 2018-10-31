@@ -46,7 +46,8 @@
     {app_id, binary()} |
     {queue_definitions, list(queue_definition())} |
     {reply_queue, binary()} |
-    {no_ack, boolean()}.
+    {no_ack, boolean()} |
+    rabbitmq_direct_reply.
 
 
 -type pull_client_option() ::
