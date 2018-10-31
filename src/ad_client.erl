@@ -326,7 +326,7 @@ setup_amqp_state(State = #state{channel = Channel}, Configuration) ->
     amqp_definitions:inject(Channel,
                             proplists:get_value(queue_definitions, Configuration, [])),
 
-    RQ = case proplists:get_value(direct_reply, Configuration, false) of
+    RQ = case proplists:get_value(rabbitmq_direct_reply, Configuration, false) of
         false ->
                 setup_reply_queue(
                     Channel,
@@ -441,7 +441,7 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
                                              {amqp_direct_consumer, [self()]}),
             %% Monitor the Channel for errors
             erlang:monitor(process, Channel),
-            NoAck = proplists:get_value(direct_reply, Configuration, false) or
+            NoAck = proplists:get_value(rabbitmq_direct_reply, Configuration, false) or
                     proplists:get_value(no_ack, Configuration, false),
             InitialState =
                 #state{channel     = Channel,

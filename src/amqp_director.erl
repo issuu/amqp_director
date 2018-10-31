@@ -47,7 +47,7 @@
     {queue_definitions, list(queue_definition())} |
     {reply_queue, binary()} |
     {no_ack, boolean()} |
-    direct_reply.
+    rabbitmq_direct_reply.
 
 
 -type pull_client_option() ::
