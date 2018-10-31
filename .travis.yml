@@ -4,12 +4,12 @@ matrix:
   include:
   - elixir: '1.6.0'
     otp_release: '20.0'
-  # - elixir: '1.7.3'
-  #   otp_release: '21.0'
+  - elixir: '1.7.3'
+    otp_release: '21.0'
 
 script:
   - make test
-  - make dialyzer
+  - travis_wait 30 make dialyzer
 
 services:
   - rabbitmq
