@@ -5,7 +5,7 @@ defmodule AmqpDirector.MixProject do
     [
       app: :amqp_director,
       description: "A simplistic embeddable RPC Client/Server library for AMQP/RabbitMQ.",
-      version: "1.4.0-rc.1",
+      version: "1.4.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -31,7 +31,7 @@ defmodule AmqpDirector.MixProject do
     [
       {:ex_doc, "~> 0.19.1", only: :dev, runtime: false},
       {:dialyxir, "~> 0.5", only: :dev, runtime: false},
-      {:amqp_client, "~> 3.7.9-rc.2"},
+      {:amqp_client, "~> 3.7.9"},
       {:gproc, "~> 0.8.0"},
       {:lager, "~> 3.6.5"}
     ]
