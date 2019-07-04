@@ -105,7 +105,7 @@ defmodule AmqpDirector do
 
   @typedoc "The type that a AMQP RPC Server handler function must return."
   @type handler_return_type ::
-          {:reply, payload :: binary | {binary, :rabbit_framing.amqp_table()}, content_type}
+          {:reply, payload :: binary | {binary, Definitions.amqp_table()}, content_type}
           | :reject
           | :reject_no_requeue
           | {:reject_dump_msg, String.t()}

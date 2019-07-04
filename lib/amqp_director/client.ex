@@ -5,6 +5,7 @@ defmodule AmqpDirector.Client do
   This module contains functionality for an RPC client. See `AmqpDirector.client_child_spec/3` for details on how to start the RPC client.
   """
 
+  alias AmqpDirector.Definitions
   @typedoc """
   Options for an RPC request.
 
@@ -42,7 +43,7 @@ defmodule AmqpDirector.Client do
           client :: atom | pid,
           exchange :: String.t(),
           routing_key :: String.t(),
-          payload :: binary | {binary, :rabbit_framing.amqp_table()},
+          payload :: binary | {binary, Definitions.amqp_table()},
           content_type :: String.t(),
           type :: String.t(),
           options :: list(request_options)
@@ -65,11 +66,11 @@ defmodule AmqpDirector.Client do
           client :: atom | pid,
           exchange :: String.t(),
           routing_key :: String.t(),
-          payload :: binary | {binary, :rabbit_framing.amqp_table()},
+          payload :: binary | {binary, Definitions.amqp_table()},
           content_type :: String.t(),
           options :: list(request_options)
         ) ::
-          {:ok, content :: binary | {binary, :rabbitmq_framing.amqp_table()},
+          {:ok, content :: binary | {binary, Definitions.amqp_table()},
            content_type :: String.t()}
           | {:error, call_error_reason}
   def call(client, exchange, routing_key, payload, content_type, options \\ [timeout: 5000]) do

@@ -97,7 +97,7 @@ cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type) ->
        Exchange :: binary(),
        RoutingKey :: binary(),
        Payload :: binary(),
-       ContentType :: binary() | {binary(), rabbit_framing:amqp_table()},
+       ContentType :: binary() | {binary(), term()},
        Type :: binary(),
        Options :: [atom() | {atom(), term()}].
 cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) ->
@@ -124,10 +124,10 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
   when RpcClient :: atom() | pid(),
        Exchange :: binary(),
        RoutingKey :: binary(),
-       Request :: binary() | {binary(), rabbit_framing:amqp_table()},
+       Request :: binary() | {binary(), term()},
        ContentType :: binary(),
        Options :: [{atom(), term()} | atom()],
-       Payload :: binary() | {binary(), rabbit_framing:amqp_table()},
+       Payload :: binary() | {binary(), term()},
        ContentType :: binary(),
        Reason :: term().
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
@@ -154,10 +154,10 @@ call_timeout(Client, Exchange, RK, Payload, CT) ->
   when RpcClient :: atom() | pid(),
        Exchange :: binary(),
        RoutingKey :: binary(),
-       Request :: binary() | {binary(), rabbit_framing:amqp_table()},
+       Request :: binary() | {binary(), term()},
        ContentType :: binary(),
        Options :: [{atom(), term()} | atom()],
-       Payload :: binary() | {binary(), rabbit_framing:amqp_table()},
+       Payload :: binary() | {binary(), term()},
        ContentType :: binary(),
        Reason :: term().
 call_timeout(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
