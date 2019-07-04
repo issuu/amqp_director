@@ -12,8 +12,13 @@ defmodule AmqpDirector.Client do
   * `:timeout` - Time the client awaits response. Only valid for `call/6`. This is the `gen_server` timeout. Should be larger than the value for `:ttl`
   * `:persistent` - Specifies the delivery mode for the AMQP messages. Setting this to `true` will make the broker log the
   messages on disk. See AMQP specification for more information. Defaults to `false`
+  * `:return_headers` - Specified if the caller is interested into the amqp message header table
   """
-  @type request_options :: {:timeout, pos_integer | :infinity} | {:persistent, boolean} | {:ttl, pos_integer}
+  @type request_options ::
+          {:timeout, pos_integer | :infinity}
+          | {:persistent, boolean}
+          | {:ttl, pos_integer}
+          | {:return_headers, boolean}
 
   @doc """
   Await until the client is started.
@@ -37,7 +42,7 @@ defmodule AmqpDirector.Client do
           client :: atom | pid,
           exchange :: String.t(),
           routing_key :: String.t(),
-          payload :: binary,
+          payload :: binary | {binary, :rabbit_framing.amqp_table()},
           content_type :: String.t(),
           type :: String.t(),
           options :: list(request_options)
@@ -60,10 +65,13 @@ defmodule AmqpDirector.Client do
           client :: atom | pid,
           exchange :: String.t(),
           routing_key :: String.t(),
-          payload :: binary,
+          payload :: binary | {binary, :rabbit_framing.amqp_table()},
           content_type :: String.t(),
           options :: list(request_options)
-        ) :: {:ok, content :: binary, content_type :: String.t()} | {:error, call_error_reason}
+        ) ::
+          {:ok, content :: binary | {binary, :rabbitmq_framing.amqp_table()},
+           content_type :: String.t()}
+          | {:error, call_error_reason}
   def call(client, exchange, routing_key, payload, content_type, options \\ [timeout: 5000]) do
     :ad_client.call(client, exchange, routing_key, payload, content_type, options)
   end

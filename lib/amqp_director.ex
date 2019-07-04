@@ -6,6 +6,92 @@ defmodule AmqpDirector do
   """
   require AmqpDirector.Queues
 
+  defmodule Definitions do
+    require Record
+
+    Record.defrecord(
+      :basic_deliver,
+      :"basic.deliver",
+      Record.extract(:"basic.deliver", from_lib: "amqp_client/include/amqp_client.hrl")
+    )
+
+    Record.defrecord(
+      :amqp_msg,
+      Record.extract(:amqp_msg, from_lib: "amqp_client/include/amqp_client.hrl")
+    )
+
+    Record.defrecord(
+      :p_basic,
+      :P_basic,
+      Record.extract(:P_basic, from_lib: "amqp_client/include/amqp_client.hrl")
+    )
+
+    @type basic_deliver ::
+        record(:basic_deliver,
+            consumer_tag: String.t(),
+            delivery_tag: String.t(),
+            redelivered: bool(),
+            exchange: String.t(),
+            routing_key: String.t()
+        )
+    @type p_basic ::
+            record(:p_basic,
+            content_type: String.t(),
+            content_encoding: String.t(),
+            headers: amqp_table(),
+            delivery_mode: any,
+            priority: any,
+            correlation_id: String.t(),
+            reply_to: String.t(),
+            expiration: any,
+            message_id: any,
+            timestamp: any,
+            type: any,
+            user_id: any,
+            app_id: any,
+            cluster_id: any
+        )
+
+    @type amqp_msg :: record(:amqp_msg, props: p_basic(), payload: String.t())
+
+    # copied from rabbit_common rabbit_framing_amqp_0_9_1.erl
+    @type amqp_field_type() ::
+            :longstr
+            | :signedint
+            | :decimal
+            | :timestamp
+            | :unsignedbyte
+            | :unsignedshort
+            | :unsignedint
+            | :table
+            | :byte
+            | :double
+            | :float
+            | :long
+            | :short
+            | :bool
+            | :binary
+            | :void
+            | :array
+
+    @type amqp_value() ::
+            binary                                      # longstr, binary
+            | integer()                                 # signedint
+            | {non_neg_integer(), non_neg_integer()}    # decimal
+            | amqp_table()
+            | amqp_array()
+            | byte()                                    # byte
+            | float()                                   # double
+            | integer()                                 # long, short
+            | boolean()                                 # bool
+            | binary()                                  # binary
+            | :undefined                                # void
+            | non_neg_integer()                         # timestamp
+
+    @type amqp_table() :: [{binary, amqp_field_type(), amqp_value()}]
+    @type amqp_array() :: [{amqp_field_type(), amqp_value()}]
+  end
+
   @typedoc "RabbitMQ broker connection options."
   @type connection_option ::
           {:host, String.t()}
@@ -19,7 +105,7 @@ defmodule AmqpDirector do
 
   @typedoc "The type that a AMQP RPC Server handler function must return."
   @type handler_return_type ::
-          {:reply, payload :: binary, content_type}
+          {:reply, payload :: binary | {binary, :rabbit_framing.amqp_table()}, content_type}
           | :reject
           | :reject_no_requeue
           | {:reject_dump_msg, String.t()}
@@ -30,9 +116,9 @@ defmodule AmqpDirector do
   deconstruct the message and only provide the payload along with content type into the handler. If the handler is of arity 1 then it will be called
   with a raw AMQP message record
   """
-  @type handler :: (payload :: binary, content_type, type :: String.t() -> handler_return_type) |
-  (raw_msg :: {basic_deliver :: term, amqp_msg :: term} -> handler_return_type)
-
+  @type handler ::
+          (payload :: binary, content_type, type :: String.t() -> handler_return_type)
+          | (raw_msg :: {basic_deliver :: Definitions.basic_deliver(), amqp_msg :: Definitions.amqp_msg()} -> handler_return_type)
 
   @typedoc """
   AMQP RPC Server configuration options.
