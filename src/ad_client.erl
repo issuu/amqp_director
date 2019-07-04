@@ -97,7 +97,7 @@ cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type) ->
        Exchange :: binary(),
        RoutingKey :: binary(),
        Payload :: binary(),
-       ContentType :: binary(),
+       ContentType :: binary() | {binary(), term()},
        Type :: binary(),
        Options :: [atom() | {atom(), term()}].
 cast(RpcClient, Exchange, RoutingKey, Payload, ContentType, Type, Options) ->
@@ -124,19 +124,20 @@ call(RpcClient, Exchange, RoutingKey, Payload, ContentType) ->
   when RpcClient :: atom() | pid(),
        Exchange :: binary(),
        RoutingKey :: binary(),
-       Request :: binary(),
+       Request :: binary() | {binary(), term()},
        ContentType :: binary(),
        Options :: [{atom(), term()} | atom()],
-       Payload :: binary(),
+       Payload :: binary() | {binary(), term()},
        ContentType :: binary(),
        Reason :: term().
 call(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, infinity),
+    ReturnHeaders = proplists:get_value(return_headers, Options, false),
     TTL = proplists:get_value(ttl, Options, 5000),
     Durability = decode_durability(Options),
     case valid_options(Payload) of
         ok ->
-            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability, TTL}, Timeout);
+            gen_server:call(RpcClient, {call, Exchange, RoutingKey, Payload, ContentType, Durability, TTL, ReturnHeaders}, Timeout);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -153,18 +154,19 @@ call_timeout(Client, Exchange, RK, Payload, CT) ->
   when RpcClient :: atom() | pid(),
        Exchange :: binary(),
        RoutingKey :: binary(),
-       Request :: binary(),
+       Request :: binary() | {binary(), term()},
        ContentType :: binary(),
        Options :: [{atom(), term()} | atom()],
-       Payload :: binary(),
+       Payload :: binary() | {binary(), term()},
        ContentType :: binary(),
        Reason :: term().
 call_timeout(RpcClient, Exchange, RoutingKey, Payload, ContentType, Options) ->
     Timeout = proplists:get_value(timeout, Options, 5000), % This defaults to 5 seconds timeouts
+    ReturnHeaders = proplists:get_value(return_headers, Options, false),
     Durability = decode_durability(Options),
     case valid_options(Payload) of
         ok ->
-            MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, Timeout),
+            MRef = gen_server:call(RpcClient, {async_call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout, ReturnHeaders}, Timeout),
             receive
                 {ad_client_reply, MRef, Result} ->
                     Result
@@ -207,11 +209,11 @@ handle_call(_Msg, _From, #state { channel = undefined } = State) ->
     {reply, {error, no_connection}, State};
 handle_call(_Msg, _From, #state { reply_queue = none } = State) ->
     {reply, {error, no_call_configuration}, State};
-handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, From, #state {} = State) ->
-    {ok, _Mref, NewState} = publish_call(Payload, ContentType, {sync, From}, Exchange, RoutingKey, Durability, Timeout, State),
+handle_call({call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout, ReturnHeaders}, From, #state {} = State) ->
+    {ok, _Mref, NewState} = publish_call(Payload, ContentType, {sync, From}, Exchange, RoutingKey, Durability, Timeout, ReturnHeaders, State),
     {noreply, NewState};
-handle_call({async_call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout}, {Pid, _Tag}, #state {} = State) ->
-    {ok, MRef, NewState} = publish_call(Payload, ContentType, {async, Pid}, Exchange, RoutingKey, Durability, Timeout, State),
+handle_call({async_call, Exchange, RoutingKey, Payload, ContentType, Durability, Timeout, ReturnHeaders}, {Pid, _Tag}, #state {} = State) ->
+    {ok, MRef, NewState} = publish_call(Payload, ContentType, {async, Pid}, Exchange, RoutingKey, Durability, Timeout, ReturnHeaders, State),
     {reply, MRef, NewState}.
 
 %% @private
@@ -282,7 +284,8 @@ handle_info({#'basic.return' { reply_code = ReplyCode },
     end;
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
             #amqp_msg{props = #'P_basic'{correlation_id = CorrelationIdBin,
-                                         content_type = ContentType},
+                                         content_type = ContentType,
+                                         headers = Headers},
                       payload = Payload}},
             State = #state{ continuations = Conts,
                             monitors = Monitors,
@@ -294,9 +297,13 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
         error ->
             %% Stray message. If the client has timed out, this can happen
             {noreply, State};
-        {ok, {Source, From, MonitorRef}} ->
+        {ok, {Source, From, MonitorRef, ReturnHeaders}} ->
+             Msg = case ReturnHeaders of
+                 false -> {ok, Payload, ContentType};
+                 true -> {ok, {Payload, Headers}, ContentType}
+             end,
              erlang:demonitor(MonitorRef),
-             reply(Source, From, MonitorRef, {ok, Payload, ContentType}),
+             reply(Source, From, MonitorRef, Msg),
              {noreply, State#state{ continuations = dict:erase(CorrelationIdBin, Conts),
                                     monitors = dict:erase(MonitorRef, Monitors) }}
     end.
@@ -362,15 +369,21 @@ setup_consumer(#state{channel = Channel, reply_queue = Q, ack = Ack}) ->
 %% Publishes to the broker, stores the From address against
 %% the correlation id and increments the correlationid for
 %% the next request
-publish_call(Payload, ContentType, {_Sync, From} = Source, Exchange, RoutingKey,
+publish_call(Contents, ContentType, {_Sync, From} = Source, Exchange, RoutingKey,
         Durability,
-	Timeout,
+    	Timeout,
+        ReturnHeaders,  
         State = #state{channel = Channel,
                        monitors = Monitors,
                        correlation_id = CorrelationId,
                        continuations = Continuations}) ->
+    {Payload, Headers} = case Contents of
+        {_, _} -> Contents;
+        _ -> {Contents, undefined}
+    end,
+
     Corr = list_to_binary(integer_to_list(CorrelationId)),
-    Props = p_basic(ContentType, <<"request">>, Durability, Corr, Timeout, State),
+    Props = p_basic(ContentType, Headers, <<"request">>, Durability, Corr, Timeout, State),
     Publish = #'basic.publish'{exchange = Exchange,
                                routing_key = RoutingKey,
                                mandatory = true},
@@ -383,8 +396,8 @@ publish_call(Payload, ContentType, {_Sync, From} = Source, Exchange, RoutingKey,
     Ref = erlang:monitor(process, Pid),
     Conts =
       case Source of
-        {sync, F} -> dict:store(Corr, {sync, F, Ref}, Continuations);
-        {async, F} -> dict:store(Corr, {async, F, Ref}, Continuations)
+        {sync, F} -> dict:store(Corr, {sync, F, Ref, ReturnHeaders}, Continuations);
+        {async, F} -> dict:store(Corr, {async, F, Ref, ReturnHeaders}, Continuations)
       end,
     {ok, Ref,
          State#state{
@@ -397,17 +410,19 @@ delivery_mode(transient) -> 1;
 delivery_mode(persistent) -> 2.
 
 %% p_basic/6 transforms a State into the basic properties
-p_basic(ContentType, Type, Durability, Corr, infinity, #state { reply_queue = Q, app_id = AppId }) ->
+p_basic(ContentType, Headers, Type, Durability, Corr, infinity, #state { reply_queue = Q, app_id = AppId }) ->
     #'P_basic'{
         correlation_id = Corr,
+        headers = Headers,
         content_type = ContentType,
         type = Type,
         app_id = AppId,
         reply_to = Q,
         delivery_mode = delivery_mode(Durability)};
-p_basic(ContentType, Type, Durability, Corr, Timeout, #state { reply_queue = Q, app_id = AppId }) ->
+p_basic(ContentType, Headers, Type, Durability, Corr, Timeout, #state { reply_queue = Q, app_id = AppId }) ->
     #'P_basic'{
         correlation_id = Corr,
+        headers = Headers,
         content_type = ContentType,
         type = Type,
         app_id = AppId,
@@ -416,12 +431,18 @@ p_basic(ContentType, Type, Durability, Corr, Timeout, #state { reply_queue = Q, 
         expiration = list_to_binary(integer_to_list(Timeout))}.
 
 %% Publish on a queue in a fire-n-forget fashion.
-publish_cast(Payload, Exchange, RoutingKey, ContentType, Type,
+publish_cast(Contents, Exchange, RoutingKey, ContentType, Type,
              Durability,
              #state { channel = Channel, app_id = AppId }) ->
+    {Payload, Headers} = case Contents of
+        {_, _} -> Contents;
+        _ -> {Contents, undefined}
+    end,
+
     Props = #'P_basic'{content_type = ContentType,
                        type = Type,
                        app_id = AppId,
+                       headers = Headers,
                        delivery_mode = delivery_mode(Durability)},
     Publish = #'basic.publish'{exchange = Exchange,
                                routing_key = RoutingKey,
@@ -472,4 +493,5 @@ decode_durability(Options) ->
 
 
 valid_options(Payload) when is_binary(Payload) -> ok;
+valid_options({Payload, Headers}) when is_binary(Payload) andalso is_list(Headers) -> ok;
 valid_options(_Payload) -> {error, badarg}.

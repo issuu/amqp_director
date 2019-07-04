@@ -112,12 +112,17 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
     #'P_basic'{correlation_id = CorrelationId,
                reply_to = Q} = Props,
     case Fun(InfoMsg) of
-      {reply, Response, CT} ->
+      {reply, Content, CT} ->
+        {Response, Headers} = case Content of
+            {_, _} -> Content;
+            _ -> {Content, undefined}
+        end,
         case Q of
           undefined -> ok;
           _ ->
             Properties = #'P_basic'{correlation_id = CorrelationId,
                                     content_type = CT,
+                                    headers = Headers,
                                     type = <<"reply">>,
                                     delivery_mode = DeliveryMode},
             Publish = #'basic.publish'{exchange = <<>>,
