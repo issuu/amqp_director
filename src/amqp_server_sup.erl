@@ -33,4 +33,4 @@ init([RegName, ConnInfo, Config, Fun, Count]) ->
                    permanent, 5000, worker, [amqp_connection_mgr]},
     ServerSup = {server_sup, {amqp_server_pool_sup, start_link, [RegName, Config, Fun, Count]},
                    permanent, infinity, supervisor, [amqp_server_pool_sup]},
-    {ok, { {one_for_all, 5, 3600}, [Connection, ServerSup]} }.
+    {ok, { {one_for_all, 5, 3600}, [ServerSup, Connection]} }.
