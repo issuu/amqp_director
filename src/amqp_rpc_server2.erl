@@ -39,7 +39,8 @@
 
 -record(state, {channel, handler,
                 ack = true, % should we ack messages?
-                delivery_mode = 1 % should reply msg persist (2) or not (1)?
+                delivery_mode = 1, % should reply msg persist (2) or not (1)?
+                consumer_tag = <<>>
                }).
 -define(MAX_RECONNECT, timer:seconds(30)).
 -type rpc_handler_return() :: {reply, binary()} | ack | reject | reject_no_requeue.
@@ -103,7 +104,7 @@ handle_info({#'basic.consume'{}, _}, State) ->
 handle_info(#'basic.consume_ok'{}, State) ->
     {noreply, State};
 handle_info(#'basic.cancel'{}, State) ->
-    {step, amqp_server_cancelled, State};
+    {stop, amqp_server_cancelled, State};
 handle_info(#'basic.cancel_ok'{}, State) ->
     {stop, normal, State};
 handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
@@ -160,9 +161,18 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
       ack when not Ack ->
         {noreply, State} % Ignore acks here
     end;
+handle_info({#'basic.return' { routing_key = <<"amq.rabbitmq.reply-to.", _/binary>> }, _Msg }, State) ->
+    %% this is a direct-reply queue, it will always be returned!
+    %% See https://www.rabbitmq.com/direct-reply-to.html
+    {noreply, State};
 handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
     lager:notice("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
     {noreply, State};
+handle_info({'DOWN', _MRef, process, Pid, normal}, #state{channel = Pid} = State) ->
+    %% When shutting down, the channel will go down first (see amqp_server_sup.erl).
+    %% If the reason is `normal`, do nothing as this server will be shut down in a
+    %% short while too.
+    {noreply, State#state{ channel = undefined }};
 handle_info({'DOWN', _MRef, process, Pid, Reason}, #state{channel = Pid} = State) ->
     {stop, Reason, State#state{ channel = undefined }};
 handle_info({'EXIT', _Pid, normal}, State) ->
@@ -219,6 +229,9 @@ qos_configuration(Config) ->
 connect(ConnectionRef, Config, Fun) ->
   case amqp_connection_mgr:fetch(ConnectionRef) of
     {error, econnrefused} -> throw(reconnect);
+    {error, enotstarted} ->
+        error_logger:info_msg("RPC Server has no working channel (connection not started), waiting"),
+        throw(reconnect);
     {ok, Connection} ->
         case amqp_connection:open_channel(
                           Connection, {amqp_direct_consumer, [self()]}) of
@@ -238,7 +251,7 @@ connect(ConnectionRef, Config, Fun) ->
                       amqp_channel:call(Channel, qos_configuration(Config)),
                       #'basic.consume_ok'{} = amqp_channel:call(Channel, #'basic.consume'{
                          queue = Q, consumer_tag = ConsumerTag, no_ack = NoAck}),
-                      #state{channel = Channel, handler = Fun, ack = not NoAck, delivery_mode = DeliveryMode }
+                      #state{channel = Channel, handler = Fun, ack = not NoAck, delivery_mode = DeliveryMode, consumer_tag = ConsumerTag }
               end;
            closing ->
              throw(reconnect)

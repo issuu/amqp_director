@@ -56,4 +56,4 @@ init([Type, EndPoint, ConnReg, ConnInfo, ClientConfig]) ->
                   permanent, 5000, worker, [amqp_connection_mgr]},
     Client = {client, {Type, start_link, [EndPoint, ClientConfig , ConnReg]},
               permanent, 5000, worker, [amqp_rpc_client2]},
-    {ok, { {one_for_all, 5, 3600}, [Connection, Client]} }.
+    {ok, { {one_for_all, 5, 3600}, [Client, Connection]} }.

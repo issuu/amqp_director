@@ -246,6 +246,9 @@ handle_info({reconnect, Name, Configuration, CRef, ReconnectTime},
             #state { channel = undefined }) ->
     {noreply, try_connect(Name, Configuration, CRef, ReconnectTime)};
 %% Monitor 'DOWN' messages for dead clients or connections
+handle_info({'DOWN', _, process, Channel, normal},
+            #state { channel = Channel } = State) ->
+    {noreply, State#state{ channel = undefined }};
 handle_info({'DOWN', _, process, Channel, Reason},
             #state { channel = Channel } = State) ->
     lager:info("Channel ~p going down... stopping", [Channel]),
@@ -474,6 +477,12 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
             gproc:add_local_name(Name),
             State;
         {error, econnrefused} ->
+            timer:send_after(ReconnectTime,
+                             self(),
+                             {reconnect, Name, Configuration, ConnectionRef,
+                                         min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+            #state { channel = undefined };
+        {error, enotstarted} ->
             timer:send_after(ReconnectTime,
                              self(),
                              {reconnect, Name, Configuration, ConnectionRef,

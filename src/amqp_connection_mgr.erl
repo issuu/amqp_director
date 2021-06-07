@@ -52,7 +52,10 @@ start_link(RegName, ConnInfo) ->
   when RegName :: atom(),
        Reason :: term().
 fetch(RegName) ->
-    gen_server:call(RegName, fetch).
+    case whereis(RegName) of
+        undefined -> {error, enotstarted};
+        _ -> gen_server:call(RegName, fetch)
+    end.
 
 %%--------------------------------------------------------------------------
 

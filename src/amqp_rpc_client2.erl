@@ -402,5 +402,10 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
           error_logger:info_msg("RPC Client has no working channel, waiting"),
           timer:send_after(ReconnectTime, self(), {reconnect, Name, Configuration, ConnectionRef,
                                                               min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+          #state { channel = undefined };
+        {error, enotstarted} ->
+          error_logger:info_msg("RPC Client has no working channel (connection not started), waiting"),
+          timer:send_after(ReconnectTime, self(), {reconnect, Name, Configuration, ConnectionRef,
+                                                              min(ReconnectTime * 2, ?MAX_RECONNECT)}),
           #state { channel = undefined }
       end.
