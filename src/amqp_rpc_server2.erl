@@ -161,6 +161,10 @@ handle_info({#'basic.deliver'{delivery_tag = DeliveryTag},
       ack when not Ack ->
         {noreply, State} % Ignore acks here
     end;
+handle_info({#'basic.return' { routing_key = <<"amq.rabbitmq.reply-to.", _/binary>> }, _Msg }, State) ->
+    %% this is a direct-reply queue, it will always be returned!
+    %% See https://www.rabbitmq.com/direct-reply-to.html
+    {noreply, State};
 handle_info({#'basic.return' { } = ReturnMsg, _Msg }, State) ->
     lager:notice("Returned message from RPC server-handler reply: ~p", [ReturnMsg]),
     {noreply, State};
@@ -225,6 +229,9 @@ qos_configuration(Config) ->
 connect(ConnectionRef, Config, Fun) ->
   case amqp_connection_mgr:fetch(ConnectionRef) of
     {error, econnrefused} -> throw(reconnect);
+    {error, enotstarted} ->
+        error_logger:info_msg("RPC Server has no working channel (connection not started), waiting"),
+        throw(reconnect);
     {ok, Connection} ->
         case amqp_connection:open_channel(
                           Connection, {amqp_direct_consumer, [self()]}) of

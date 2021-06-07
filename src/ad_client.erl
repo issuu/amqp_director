@@ -481,6 +481,12 @@ try_connect(Name, Configuration, ConnectionRef, ReconnectTime) ->
                              self(),
                              {reconnect, Name, Configuration, ConnectionRef,
                                          min(ReconnectTime * 2, ?MAX_RECONNECT)}),
+            #state { channel = undefined };
+        {error, enotstarted} ->
+            timer:send_after(ReconnectTime,
+                             self(),
+                             {reconnect, Name, Configuration, ConnectionRef,
+                                         min(ReconnectTime * 2, ?MAX_RECONNECT)}),
             #state { channel = undefined }
     end.
 

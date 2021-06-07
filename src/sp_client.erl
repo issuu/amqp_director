@@ -88,6 +88,9 @@ try_connect(Configuration, ConnectionRef) ->
             amqp_definitions:inject(Channel, proplists:get_value(queue_definitions, Configuration, [])),
             AppId = proplists:get_value(app_id, Configuration, list_to_binary(atom_to_list(node()))),
             #state{channel = Channel, app_id  = AppId};
+        {error, enotstarted} ->
+            timer:send_after(?RECONNECT_TIME, self(), {reconnect, Configuration, ConnectionRef}),
+            #state{channel = undefined};
         {error, econnrefused} ->
             timer:send_after(?RECONNECT_TIME, self(), {reconnect, Configuration, ConnectionRef}),
             #state{channel = undefined}
