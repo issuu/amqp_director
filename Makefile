@@ -29,3 +29,7 @@ dialyzer:
 
 erl-dialyzer:
 	rebar3 dialyzer
+
+publish:
+	mix do format, compile, hex.build
+	mix hex.publish --yes
