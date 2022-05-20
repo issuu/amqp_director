@@ -27,30 +27,30 @@ defmodule AmqpDirector do
     )
 
     @type basic_deliver ::
-        record(:basic_deliver,
-            consumer_tag: String.t(),
-            delivery_tag: String.t(),
-            redelivered: bool(),
-            exchange: String.t(),
-            routing_key: String.t()
-        )
+            record(:basic_deliver,
+              consumer_tag: String.t(),
+              delivery_tag: String.t(),
+              redelivered: bool(),
+              exchange: String.t(),
+              routing_key: String.t()
+            )
     @type p_basic ::
             record(:p_basic,
-            content_type: String.t(),
-            content_encoding: String.t(),
-            headers: amqp_table(),
-            delivery_mode: any,
-            priority: any,
-            correlation_id: String.t(),
-            reply_to: String.t(),
-            expiration: any,
-            message_id: any,
-            timestamp: any,
-            type: any,
-            user_id: any,
-            app_id: any,
-            cluster_id: any
-        )
+              content_type: String.t(),
+              content_encoding: String.t(),
+              headers: amqp_table(),
+              delivery_mode: any,
+              priority: any,
+              correlation_id: String.t(),
+              reply_to: String.t(),
+              expiration: any,
+              message_id: any,
+              timestamp: any,
+              type: any,
+              user_id: any,
+              app_id: any,
+              cluster_id: any
+            )
 
     @type amqp_msg :: record(:amqp_msg, props: p_basic(), payload: String.t())
 
@@ -74,19 +74,29 @@ defmodule AmqpDirector do
             | :void
             | :array
 
+    # longstr, binary
     @type amqp_value() ::
-            binary                                      # longstr, binary
-            | integer()                                 # signedint
-            | {non_neg_integer(), non_neg_integer()}    # decimal
+            binary
+            # signedint
+            | integer()
+            # decimal
+            | {non_neg_integer(), non_neg_integer()}
             | amqp_table()
             | amqp_array()
-            | byte()                                    # byte
-            | float()                                   # double
-            | integer()                                 # long, short
-            | boolean()                                 # bool
-            | binary()                                  # binary
-            | :undefined                                # void
-            | non_neg_integer()                         # timestamp
+            # byte
+            | byte()
+            # double
+            | float()
+            # long, short
+            | integer()
+            # bool
+            | boolean()
+            # binary
+            | binary()
+            # void
+            | :undefined
+            # timestamp
+            | non_neg_integer()
 
     @type amqp_table() :: [{binary, amqp_field_type(), amqp_value()}]
     @type amqp_array() :: [{amqp_field_type(), amqp_value()}]
@@ -118,7 +128,9 @@ defmodule AmqpDirector do
   """
   @type handler ::
           (payload :: binary, content_type, type :: String.t() -> handler_return_type)
-          | (raw_msg :: {basic_deliver :: Definitions.basic_deliver(), amqp_msg :: Definitions.amqp_msg()} -> handler_return_type)
+          | (raw_msg ::
+               {basic_deliver :: Definitions.basic_deliver(), amqp_msg :: Definitions.amqp_msg()} ->
+               handler_return_type)
 
   @typedoc """
   AMQP RPC Server configuration options.
