@@ -6,6 +6,7 @@ defmodule AmqpDirector.Client do
   """
 
   alias AmqpDirector.Definitions
+
   @typedoc """
   Options for an RPC request.
 

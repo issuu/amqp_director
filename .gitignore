@@ -35,3 +35,4 @@ erl_crash.dump
 
 # Ignore package tarball (built via "mix hex.build").
 test_mix-*.tar
+amqp_director-*.tar
